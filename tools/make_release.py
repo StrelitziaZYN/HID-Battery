@@ -206,12 +206,14 @@ def zip_dir(src: Path, zip_path: Path, skip_bin: bool = False) -> Path:
 
 
 def portable_zip(exe: Path, zip_path: Path) -> Path:
-    """发布用的便携包：EXE + README + LICENSE，解压双击即用。"""
+    """发布用的便携包：EXE + README + LICENSE + 截图（README 里的相对路径要能打开）。"""
     members: list[tuple[Path, str]] = [(exe, exe.name)]
     for name in ("README.md", "LICENSE"):
         cand = ROOT / name
         if cand.exists():
             members.append((cand, name))
+    for shot in sorted((ROOT / "docs" / "screenshots").glob("*.png")):
+        members.append((shot, f"docs/screenshots/{shot.name}"))
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for path, arc in members:
             zf.write(path, arc)
