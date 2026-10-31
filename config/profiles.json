@@ -1,0 +1,96 @@
+{
+  "config_version": 2,
+  "refresh_interval": 60,
+  "profiles": [
+    {
+      "report_id": 77,
+      "report_size": 64,
+      "cmd_get_battery": 2304,
+      "timeout_ms": 600,
+      "rx_payload_offset": 8,
+      "battery_index": 12,
+      "charging_index": 11,
+      "connection_index": 10,
+      "vid_index": 0,
+      "pid_index": 2,
+      "protocol_version": 1,
+      "flags": 1,
+      "biz_code": 0,
+      "checksum_start": 2,
+      "battery_payload": [],
+      "id": "mchose-v2",
+      "name": "迈丛 MCHOSE · V2 协议",
+      "vendor_id": 14391,
+      "enabled": true,
+      "usage_pages": [
+        65281,
+        65408,
+        65291
+      ],
+      "protocol": "mchose-v2",
+      "models": {
+        "16422": "A7 V3 Pro",
+        "9504": "G98 V3",
+        "16418": "A5 V3",
+        "16419": "K7 V2",
+        "16420": "L7 Ultra",
+        "16421": "AX5 V2",
+        "8229": "G98 V3"
+      }
+    },
+    {
+      "feature_report_id": 17,
+      "feature_report_size": 20,
+      "feature_cmd": 6,
+      "battery_scale": true,
+      "rx_payload_offset": 0,
+      "battery_index": 8,
+      "charging_index": 9,
+      "connection_index": -1,
+      "vid_index": -1,
+      "pid_index": -1,
+      "xor_mask": 255,
+      "timeout_ms": 600,
+      "id": "mchose-classic",
+      "name": "迈丛 MCHOSE · 经典协议",
+      "vendor_id": 14391,
+      "enabled": false,
+      "usage_pages": [
+        65281,
+        65291
+      ],
+      "protocol": "mchose-classic",
+      "models": {}
+    },
+    {
+      "report_id": 3,
+      "report_size": 32,
+      "magic": 23205,
+      "cmd_get_battery": 1,
+      "timeout_ms": 800,
+      "retries": 2,
+      "rx_payload_offset": 1,
+      "battery_index": 11,
+      "charging_index": 11,
+      "connection_index": 6,
+      "battery_scale": 20,
+      "status_shift": 4,
+      "level_mask": 15,
+      "conn_wireless_value": 2,
+      "id": "flydigi-newxinput",
+      "name": "飞智 Flydigi · NewXInput",
+      "vendor_id": 14295,
+      "enabled": true,
+      "product_ids": [
+        9473
+      ],
+      "usage_pages": [
+        65440
+      ],
+      "protocol": "flydigi-newxinput",
+      "models": {}
+    }
+  ],
+  "notified": true,
+  "record_interval": 300
+}

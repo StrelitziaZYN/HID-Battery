@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 构建产物
+build/
+dist/
+release/
+*.spec
+
+# 运行时数据（含本机扫描到的设备与历史采样，不入库）
+data/
+*.db
+*.log
+
+# 用户上传的设备图标（运行时生成，属于本机资产）
+assets/icons/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.idea/
+.vscode/

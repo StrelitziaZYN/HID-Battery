@@ -1,0 +1,465 @@
+"""无 GUI 回归自检：协议注册 / 配置 / 扫描 / 设备检测 / 图标存取 / 提示词。
+
+    python tools/selftest.py
+
+全部通过时退出码为 0；任何一项失败会打印原因并返回 1。
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from PySide6.QtCore import QRectF, Qt                       # noqa: E402
+from PySide6.QtGui import QColor, QImage, QPainter          # noqa: E402
+
+from app import (autostart, branding, history, icon_store, plugin_store,  # noqa: E402
+                 prompt_builder, scanner)
+from app.icons import COLOR_CRIT, COLOR_WARN, battery_pixmap, level_color  # noqa: E402
+from app.profiles import default_config, load_config          # noqa: E402
+from app.protocols import all_protocols, get_protocol     # noqa: E402
+from app.protocols.registry import LEGACY_IDS, resolve_id   # noqa: E402
+
+RESULTS: list[tuple[bool, str]] = []
+_APP = None                                        # QPixmap 需要有 GUI 应用实例，且必须常驻
+
+
+def _ensure_app():
+    global _APP
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # 用 QApplication 而不是 QGuiApplication：控件相关的用例（设备行）需要它，
+    # 而 QApplication 是 QGuiApplication 的子类，QPixmap 之类照样能用。
+    from PySide6.QtWidgets import QApplication
+    _APP = QApplication.instance() or QApplication([])
+    return _APP
+
+
+def check(name: str, fn):
+    try:
+        detail = fn()
+        RESULTS.append((True, f"{name}  {detail or ''}".rstrip()))
+    except Exception as exc:                                   # noqa: BLE001
+        RESULTS.append((False, f"{name}  ->  {type(exc).__name__}: {exc}"))
+
+
+def _make_png(path: str, size: int = 200) -> None:
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    p = QPainter(image)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(30, 30, 30))
+    p.drawRoundedRect(QRectF(0, 0, size, size), 18, 18)
+    p.end()
+    image.save(path, "PNG")
+
+
+# --------------------------------------------------------------------------- #
+def t_registry():
+    protos = all_protocols()
+    ids = {p.id for p in protos}
+    assert {"mchose-v2", "mchose-classic"} <= ids, f"注册表缺少协议：{ids}"
+    assert resolve_id("report64") == "mchose-v2", "旧协议名未映射"
+    assert set(LEGACY_IDS.values()) <= ids
+    v2 = get_protocol("mchose-v2")
+    assert v2.usage_pages and v2.params, "协议自描述不完整"
+    return f"{len(protos)} 个协议：{', '.join(sorted(ids))}"
+
+
+def t_config():
+    cfg = default_config()
+    prof = cfg["profiles"][0]
+    assert prof["protocol"] in {p.id for p in all_protocols()}
+    assert "report_id" in prof and "battery_index" in prof, "插件默认值未合并进配置"
+    loaded = load_config()
+    assert loaded["profiles"], "读取配置失败"
+    return f"{len(cfg['profiles'])} 条默认接口"
+
+
+def t_scan():
+    cfg = load_config()
+    devices = scanner.scan_devices(cfg)
+    for dev in devices:
+        assert 0 <= dev["percent"] <= 100, "电量越界"
+        assert dev["vendor"], "缺少厂商名"
+        assert dev["icon_path"] is None or os.path.isfile(dev["icon_path"])
+    return f"{len(devices)} 台设备：" + "、".join(
+        f"{d['name']} {d['percent']}%" for d in devices) if devices else "0 台（可插入接收器后重试）"
+
+
+def t_detect():
+    cfg = load_config()
+    allv = scanner.list_connected(cfg)
+    assert allv, "未检测到任何 HID 设备"
+    supported = [d for d in allv if d["supported"]]
+    for dev in allv:
+        assert dev["interfaces"], f"{dev['name']} 没有集合信息"
+        assert dev["vendor"], "缺少厂商名"
+    return f"{len(allv)} 个物理设备，其中 {len(supported)} 个已支持"
+
+
+def t_prompt():
+    cfg = load_config()
+    allv = scanner.list_connected(cfg)
+    supported = next((d for d in allv if d["supported"]), None)
+    unsupported = next((d for d in allv if not d["supported"]), None)
+
+    if supported:
+        text = prompt_builder.build(scanner.enrich(supported, cfg))
+        assert "## 1. 设备信息" in text and "## 6. 插件契约" in text
+        assert supported["name"] in text, "提示词里没有设备名"
+        assert supported["vendor"] in text, "提示词里没有厂商"
+        assert branding.BUNDLE_KIND in text, "提示词没有要求输出接入包"
+        assert "code_lines" in text, "提示词没有给出接入包结构"
+    if unsupported:
+        text = prompt_builder.build(unsupported)
+        assert "尚未接入协议" in text, "未接入设备没有提示逆向"
+        assert "HID 集合" in text
+    assert supported or unsupported, "没有设备可用于生成提示词"
+    return f"已生成 {len(text.splitlines())} 行提示词（含接入包格式）"
+
+
+def t_icon_roundtrip():
+    cfg = load_config()
+    devices = scanner.scan_devices(cfg)
+    key = devices[0]["icon_key"] if devices else icon_store.key_of(0x3837, 0x2025)
+    before = icon_store.path_of(key)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "upload.png")
+        _make_png(src)
+        saved = icon_store.save(key, src)
+        assert os.path.isfile(saved), "图标没有落盘"
+        assert saved.endswith(".png"), "未归一化成 PNG"
+        img = QImage(saved)
+        assert max(img.width(), img.height()) <= icon_store.MAX_SIDE, "图标未缩放"
+        assert icon_store.resolve(int(key.split("-")[0], 16), int(key.split("-")[1], 16))
+    if devices:
+        uid = devices[0]["uid"]
+        after = scanner.scan_devices(cfg)
+        same = next((d for d in after if d["uid"] == uid), None)
+        if same is not None:                       # 设备可能在两次扫描之间休眠
+            assert same["icon_path"] == saved, "扫描结果没有带上图标"
+    icon_store.clear(key)
+    assert icon_store.path_of(key) is None, "清除图标失败"
+    if before:                                     # 恢复用户原有图标
+        icon_store.save(key, before)
+    return f"键 {key}，上传→读回→清除 全部通过"
+
+
+def t_history():
+    """历史库：写样本 → 聚合 → 预测 → 清除，全程用临时设备 uid，不污染真实数据。"""
+    uid = "TEST:SELFTEST"
+    history.clear_device(uid)
+    now = int(time.time())
+    with history._db() as conn:
+        for i in range(13):                        # 6 小时，每 30 分钟掉 5%
+            ts = now - (12 - i) * 1800
+            conn.execute("INSERT INTO samples(uid, name, percent, charging, ts) VALUES(?,?,?,?,?)",
+                         (uid, "自检设备", 100 - i * 5, 0, ts))
+        conn.execute("INSERT INTO devices(uid, name, vendor, first_ts, last_ts, last_percent) "
+                     "VALUES(?,?,?,?,?,?)", (uid, "自检设备", "TEST", now - 21600, now, 40))
+    try:
+        pts = history.points(uid, "24h", now)
+        assert len(pts) >= 5, "24 小时聚合点太少"
+        st = history.stats(uid, "24h", now)
+        assert st["count"] == 13 and st["min"] == 40, "统计不正确"
+        pred = history.predict(uid, now)
+        assert pred["ready"] and 0 < pred["hours"] < 24, f"预测异常：{pred}"
+        assert abs(pred["rate"] - 10) < 1.0, f"掉电速率异常：{pred['rate']}"
+        assert history.record([{"uid": uid, "name": "自检设备", "percent": 40}], 300, now) == 0, \
+            "节流没生效（同一时刻重复写入了）"
+    finally:
+        history.clear_device(uid)
+    assert not history.has_data(uid), "清除失败"
+    return f"聚合 {len(pts)} 点、预测 {pred['hours']:.1f}h / {pred['rate']}%/h、清除通过"
+
+
+def t_icon_colors():
+    """低电量配色与开机启动读取（不写注册表）。"""
+    assert level_color(8) == COLOR_CRIT, "≤15% 应为红色"
+    assert level_color(25) == COLOR_WARN, "≤30% 应为黄色"
+    assert level_color(60) is None, "正常电量应使用中性色"
+    assert level_color(8, charging=True) is None, "充电时不应告警"
+    autostart.is_enabled()                         # 只读，不改系统状态
+    pm = battery_pixmap(20, on_dark=True, size=40, dpr=1.0)
+    assert not pm.isNull() and pm.width() == 40, "托盘图标绘制失败"
+    return "≤15% 红 / ≤30% 黄 / 充电不告警，40px 图标正常"
+
+
+def t_branding():
+    """产品名单一来源：界面/托盘/打包都取同一个常量。"""
+    from app import profiles
+
+    assert branding.APP_NAME == "Strelitzia HID Battery", branding.APP_NAME
+    assert branding.EXE_STEM.isalnum(), "EXE 名不应含空格等特殊字符"
+    assert branding.EXE_STEM in branding.REG_KEY_VALUE
+    assert profiles.PROFILE_PATH.endswith("profiles.json")
+    return f"{branding.APP_NAME} v{branding.VERSION} / {branding.EXE_STEM}.exe"
+
+
+def t_flyout_tooltips():
+    """弹出面板的设备行不能有 tooltip（Qt 会从子控件冒泡出一整块黑框）。"""
+    from PySide6.QtWidgets import QWidget
+
+    from app.widgets import DeviceRow
+
+    dev = {"uid": "tooltip-test", "name": "自检设备", "percent": 62, "charging": False,
+           "connection": 2, "protocol": "selftest"}
+    row = DeviceRow(dict(dev))
+    offenders = [row.toolTip()] + [w.toolTip() for w in row.findChildren(QWidget)]
+    assert not any(offenders), f"设备行仍有 tooltip：{[t for t in offenders if t][:3]}"
+    assert row.sizeHint().height() > 0
+    return f"设备行及其 {len(row.findChildren(QWidget))} 个子控件均无 tooltip"
+
+
+def t_bolt_border():
+    """充电闪电：本体用底色挖空 + 前景色描边，深色任务栏下必须同时有亮、暗像素。"""
+    pm_on = battery_pixmap(60, on_dark=True, charging=True, size=40, dpr=1.0)
+    pm_off = battery_pixmap(60, on_dark=True, charging=False, size=40, dpr=1.0)
+    assert pm_on.toImage() != pm_off.toImage(), "充电与放电图标完全一样"
+
+    img = pm_on.toImage()
+    lights = darks = 0
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = img.pixelColor(x, y)
+            if c.alpha() > 200:
+                if c.lightness() > 200:
+                    lights += 1
+                elif c.lightness() < 60:
+                    darks += 1
+    assert lights > 60, f"缺少白色填充/描边（{lights}）"
+    assert darks > 20, f"闪电本体（近黑）没画出来（{darks}）"
+
+    pm_light = battery_pixmap(60, on_dark=False, charging=True, size=40, dpr=1.0)
+    img = pm_light.toImage()
+    light_px = sum(1 for y in range(img.height()) for x in range(img.width())
+                   if img.pixelColor(x, y).alpha() > 200
+                   and img.pixelColor(x, y).lightness() > 200)
+    assert light_px > 20, "浅色任务栏下闪电本体的白色没画出来"
+    return f"深/浅底都有描边+反色本体（亮 {lights}px / 暗 {darks}px / 浅底 {light_px}px）"
+
+
+def t_flyout_resize():
+    """面板列出全部设备，行数变化时窗口高度同步（内容不溢出），超量时改滚动。"""
+    from app.ui import DevicesPage, Flyout
+
+    devs = [{"uid": f"r{i}", "name": f"设备{i}", "percent": p,
+             "charging": p == 97, "connection": 2}
+            for i, p in enumerate([100, 97, 62])]
+    page = DevicesPage()
+    page.set_devices(devs)
+    assert page.row_count() == 3, f"应渲染 3 行，实际 {page.row_count()}"
+    assert [r.device["percent"] for r in page._rows] == [100, 97, 62], "行顺序应与扫描顺序一致"
+    page.set_devices([])
+    assert page.row_count() == 0, "清空后仍有残留行"
+
+    many = [{"uid": f"m{i}", "name": f"设备{i}", "percent": 100 - i, "connection": 2}
+            for i in range(12)]
+    page.set_devices(many)
+    assert page.row_count() == 12, f"12 台设备应全部建行，实际 {page.row_count()}"
+    assert page.scroll.height() <= page.MAX_VISIBLE_ROWS * 64 + 4, "超过上限时应改为滚动"
+
+    fly = Flyout({})
+    fly.devices_page.set_devices([])
+    empty_h = fly.height()
+    fly.show()
+    fly.devices_page.set_devices(devs)
+    row_h = fly.height()
+    assert row_h > empty_h, "行数变化后窗口高度没跟着变"
+    assert fly.surface.height() <= fly.height() - Flyout._OUTER + 1, "面板超出外框"
+    assert fly.devices_page.minimumSizeHint().height() <= fly.surface.height(), \
+        f"内容溢出：需要 {fly.devices_page.minimumSizeHint().height()}px，只有 {fly.surface.height()}px"
+    fly.hide()
+    return f"3 台设备渲染 3 行；高度 {empty_h}→{row_h}，12 台时改滚动，内容未溢出"
+
+
+def _pump(ms: int):
+    """跑一小段事件循环（读取状态流转要靠定时器 + 线程回包）。"""
+    app = _ensure_app()
+    end = time.monotonic() + ms / 1000.0
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+
+
+def t_reading_state():
+    """状态文字必须能落到「已完成读取」，刷新按钮跟着转/停。"""
+    from app.ui import DevicesPage
+
+    page = DevicesPage()
+    devs = [{"uid": "a", "name": "设备A", "percent": 88, "charging": True, "connection": 2}]
+
+    page.set_reading(True)
+    assert page.subtitle.text() == "正在读取设备…", page.subtitle.text()
+    assert page.btn_refresh.is_spinning(), "读取时刷新按钮没有转起来"
+
+    page.set_devices(devs)
+    still = page.subtitle.text()
+    page.set_reading(False)
+    assert page.subtitle.text().startswith("已完成读取"), page.subtitle.text()
+    assert "1 台设备" in page.subtitle.text(), page.subtitle.text()
+    _pump(900)
+    assert not page.btn_refresh.is_spinning(), "读完按钮还在转"
+
+    page.set_devices([])
+    page.set_reading(False)
+    assert page.subtitle.text() == "已完成读取 · 未检测到设备", page.subtitle.text()
+
+    page.set_reading(False, "读取超时，稍后自动重试")
+    assert page.subtitle.text() == "读取超时，稍后自动重试", page.subtitle.text()
+    return f"读取中/已完成/无设备/超时 四种状态文字正确（读中「{still}」）"
+
+
+def t_scan_orchestration():
+    """一轮刷新 = 枚举设备清单 + 读电量；超时也要收尾，绝不永久停在「正在读取」。"""
+    import main as M
+
+    calls: list[float] = []
+    delay = {"s": 0.05}
+
+    def fake_scan(_cfg):
+        calls.append(time.monotonic())
+        time.sleep(delay["s"])
+        return [{"uid": "fake", "name": "假设备", "percent": 63,
+                 "charging": False, "connection": 2}]
+
+    real_scan, real_load = M.scan_devices, M.load_config
+    M.scan_devices = fake_scan
+    M.load_config = lambda: {"refresh_interval": 3600, "record_interval": 300,
+                             "profiles": [], "notified": True}
+    tray = M.TrayApp(_ensure_app())
+    tray.SCAN_TIMEOUT_MS = 500
+    try:
+        _pump(420)                                   # 启动时那次
+        assert len(calls) == 1, f"启动应读 1 次，实际 {len(calls)}"
+        assert tray.flyout.devices_page.subtitle.text().startswith("已完成读取"), \
+            tray.flyout.devices_page.subtitle.text()
+
+        tray.flyout.devices_page.btn_refresh.click()  # 点刷新按钮
+        assert tray.flyout.devices_page.btn_refresh.is_spinning(), "点刷新后按钮没转"
+        _pump(420)
+        assert len(calls) == 2, f"点刷新应触发一次完整读取，实际 {len(calls)}"
+        assert tray.flyout.devices_page.subtitle.text().startswith("已完成读取")
+        assert tray.flyout.devices_page.row_count() == 1, "读完没有渲染设备行"
+
+        delay["s"] = 2.0                              # 模拟驱动阻塞
+        tray.flyout.devices_page.btn_refresh.click()
+        _pump(700)
+        text = tray.flyout.devices_page.subtitle.text()
+        assert "读取超时" in text, f"超时后没落到稳定状态：{text}"
+        assert not tray._watchdog.isActive(), "超时后闸门没释放，之后会永远读不到"
+        assert tray._thread is None, "卡住的线程应被挪走，好让下一轮重新发起"
+
+        delay["s"] = 0.05                             # 恢复正常
+        _pump(1600)
+        tray.refresh()
+        _pump(500)
+        assert tray.flyout.devices_page.subtitle.text().startswith("已完成读取"), \
+            tray.flyout.devices_page.subtitle.text()
+        detail = f"点刷新读到 {len(calls)} 次；超时收尾正常；恢复后回到已完成读取"
+    finally:
+        tray.shutdown()
+        tray.timer.stop()
+        tray._watchdog.stop()
+        tray.tray.hide()
+        tray.flyout.hide()
+        M.scan_devices, M.load_config = real_scan, real_load
+    return detail
+
+
+def t_bundle_import():
+    """接入包：装插件 → 合并配置 → 可被 registry 使用 → 回滚干净。"""
+    from app import profiles
+    from app.protocols import protocol_ids
+
+    pid = "selftest-bundle"
+    backup = profiles.PROFILE_PATH + ".selftest.bak"
+    shutil.copy2(profiles.PROFILE_PATH, backup)
+    plugin_file = os.path.join(plugin_store.PLUGIN_DIR, "selftest_bundle.py")
+    tmpdir = tempfile.mkdtemp()
+    try:
+        code = [
+            "from __future__ import annotations",
+            "from typing import Any, Dict",
+            "from app.hid_core import BatteryReading",
+            "from app.protocols.base import Param, Protocol",
+            "from app.protocols.registry import register",
+            "",
+            "@register",
+            "class SelfTest(Protocol):",
+            f"    id = \"{pid}\"",
+            "    label = \"自检 · 接入包\"",
+            "    vendor = \"SELFTEST\"",
+            "    usage_pages = (0xFF00,)",
+            "    params = [Param(\"report_id\", \"ID\", \"hex\", 0)]",
+            "    def query(self, dev, cfg: Dict[str, Any]) -> BatteryReading:",
+            "        return BatteryReading(percent=42)",
+        ]
+        bundle = {
+            "kind": branding.BUNDLE_KIND,
+            "version": 1,
+            "protocol": {"filename": "selftest_bundle.py", "code_lines": code},
+            "profile": {"id": pid, "name": "自检 · 接入包", "vendor_id": 0x9999,
+                        "usage_pages": [0xFF00], "protocol": pid, "models": {}},
+        }
+        path = os.path.join(tmpdir, "bundle.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(bundle, fh, ensure_ascii=False)
+
+        cfg = profiles.load_config()
+        before = len(cfg["profiles"])
+        info = plugin_store.import_file(path, cfg)
+        assert info["protocol"] == pid, f"插件 id 不对：{info}"
+        assert os.path.isfile(os.path.join(plugin_store.PLUGIN_DIR, "selftest_bundle.py"))
+        assert pid in protocol_ids(), "插件没有注册进注册表"
+        proto = get_protocol(pid)
+        assert proto is not None and proto.label.startswith("自检")
+        assert len(cfg["profiles"]) == before + 1, "配置没有追加接口"
+        assert [p["id"] for p in profiles.load_config()["profiles"]].count(pid) == 1, "配置未落盘"
+        detail = f"{info['protocol']} → 接口 {info['profiles']}，配置 {before}→{before + 1}"
+    finally:
+        shutil.move(backup, profiles.PROFILE_PATH)
+        if os.path.isfile(plugin_file):
+            os.remove(plugin_file)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    disk = [p["id"] for p in profiles.load_config()["profiles"]]
+    assert pid not in disk, "回滚后配置仍有测试接口"
+    return detail + "，回滚干净"
+
+
+def main() -> int:
+    _ensure_app()
+    for name, fn in (("协议插件注册", t_registry),
+                     ("配置加载", t_config),
+                     ("扫描已接入设备", t_scan),
+                     ("检测已连接设备", t_detect),
+                     ("提示词生成", t_prompt),
+                     ("图标上传/清除", t_icon_roundtrip),
+                     ("电量历史与预测", t_history),
+                     ("低电量配色", t_icon_colors),
+                     ("产品名一致性", t_branding),
+                     ("设备行无 tooltip", t_flyout_tooltips),
+                     ("充电闪电可分性", t_bolt_border),
+                     ("面板列全部设备与自适应高度", t_flyout_resize),
+                     ("读取状态收尾", t_reading_state),
+                     ("刷新编排与超时恢复", t_scan_orchestration),
+                     ("接入包导入", t_bundle_import)):
+        check(name, fn)
+
+    width = max(len(msg) for _, msg in RESULTS)
+    for ok, msg in RESULTS:
+        print(f"[{'PASS' if ok else 'FAIL'}] {msg:<{width}}")
+    failed = sum(1 for ok, _ in RESULTS if not ok)
+    print(f"\n{len(RESULTS) - failed}/{len(RESULTS)} 项通过")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
