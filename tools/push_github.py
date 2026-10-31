@@ -107,9 +107,10 @@ def main() -> int:
         common = git("merge-base", "HEAD", f"origin/{branch}", check=False).returncode == 0
         if has_remote and not common:
             print(f"[merge] 远端已有 {branch} 且与本地无共同祖先，执行无关历史合并")
-            mg = git("merge", "--allow-unrelated-histories", "--no-rebase",
-                     f"origin/{branch}",
-                     "-m", "chore: 合并远端初始提交（LICENSE）", check=False)
+            # 注意：--no-rebase 是 git pull 的选项，git merge 不认（会直接报 unknown option）
+            mg = git("merge", "--allow-unrelated-histories",
+                     "-m", "chore: 合并远端初始提交（LICENSE）",
+                     f"origin/{branch}", check=False)
             out = (mg.stdout + mg.stderr).strip()
             if mg.returncode != 0:
                 print(f"ERROR: 合并冲突，需手工处理：\n{out[-600:]}")
