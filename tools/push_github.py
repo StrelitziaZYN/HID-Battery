@@ -2,14 +2,15 @@
 
 用法：
     set GITHUB_TOKEN=ghp_xxx && python tools/push_github.py
-    python tools/push_github.py --token ghp_xxx --repo strelitzia-hid-battery --private
+    python tools/push_github.py --token ghp_xxx            # 默认推 StrelitziaZYN/HID-Battery
 
 做的事：
     1. GET  /user                    确认 token 身份
-    2. POST /user/repos              建仓（已存在则跳过）
+    2. GET  /repos/{owner}/{repo}    仓库已存在则复用，404 才建仓
     3. git remote set-url origin     临时用 token 鉴权
-    4. git push -u origin HEAD       推送当前分支
-    5. 推送后把 remote 改回无 token 的地址，避免 token 留在 .git/config
+    4. git fetch / merge             远端已有提交且无共同祖先时做无关历史合并
+    5. git push -u origin HEAD       推送当前分支
+    6. 推送后把 remote 改回无 token 的地址，避免 token 留在 .git/config
 """
 from __future__ import annotations
 
