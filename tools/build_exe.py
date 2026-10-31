@@ -28,6 +28,55 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app import branding                                    # noqa: E402
 
 ICON = os.path.join(BUILD, branding.EXE_STEM + ".ico")
+VERSION_FILE = os.path.join(BUILD, "version_info.txt")
+
+# EXE「属性 → 详细信息」里显示的字段
+VERSION_TEMPLATE = """VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={vers},
+    prodvers={vers},
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '080404b0',
+        [StringStruct('CompanyName', '{company}'),
+         StringStruct('FileDescription', '{desc}'),
+         StringStruct('FileVersion', '{filever}'),
+         StringStruct('InternalName', '{stem}'),
+         StringStruct('LegalCopyright', '{copyright}'),
+         StringStruct('OriginalFilename', '{stem}.exe'),
+         StringStruct('ProductName', '{name}'),
+         StringStruct('ProductVersion', '{version}')])
+    ]),
+    VarFileInfo([VarStruct('Translation', [2052, 1200])])
+  ]
+)
+"""
+
+
+def write_version_file(path: str) -> str:
+    """生成 PyInstaller 用的版本资源，让 EXE 属性里显示文件版本 = branding.VERSION。"""
+    v = branding.version_tuple()
+    text = VERSION_TEMPLATE.format(
+        vers=v,
+        filever=".".join(str(x) for x in v),
+        version=branding.VERSION,
+        name=branding.APP_NAME,
+        stem=branding.EXE_STEM,
+        desc=f"{branding.APP_NAME} · {branding.TAGLINE}",
+        company=branding.APP_NAME,
+        copyright="Copyright (c) 2026 Strelitzia",
+    )
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return path
 
 
 def main() -> int:
@@ -36,6 +85,8 @@ def main() -> int:
     os.makedirs(BUILD, exist_ok=True)
     make_icon(ICON)
     print("图标:", ICON, os.path.getsize(ICON), "bytes")
+    write_version_file(VERSION_FILE)
+    print("版本资源:", VERSION_FILE, "文件版本", ".".join(map(str, branding.version_tuple())))
 
     args = [
         sys.executable, "-m", "PyInstaller",
@@ -43,6 +94,7 @@ def main() -> int:
         "--onefile", "--windowed",
         "--name", branding.EXE_STEM,
         f"--icon={ICON}",
+        f"--version-file={VERSION_FILE}",
         "--distpath", DIST,
         "--workpath", os.path.join(BUILD, "work"),
         "--specpath", BUILD,

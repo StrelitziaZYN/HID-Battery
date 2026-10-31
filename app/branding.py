@@ -4,7 +4,7 @@ from __future__ import annotations
 APP_NAME = "Strelitzia HID Battery"
 APP_SHORT = "Strelitzia"
 TAGLINE = "2.4G 设备电量监测"
-VERSION = "2.0.0"
+VERSION = "1.0"
 
 # EXE / 图标 / 注册表项统一用无空格标识
 EXE_STEM = "StrelitziaHIDBattery"
@@ -19,3 +19,15 @@ BUNDLE_KIND = "strelitzia-hid-battery-profile"
 
 def window_title(suffix: str = "") -> str:
     return f"{APP_NAME} · {suffix}" if suffix else APP_NAME
+
+
+def version_tuple() -> tuple[int, int, int, int]:
+    """把 VERSION 补成 Windows 版本资源要求的四段数字（1.0 → 1.0.0.0）。"""
+    parts: list[int] = []
+    for piece in VERSION.split(".")[:4]:
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    while len(parts) < 4:
+        parts.append(0)
+    return tuple(parts)  # type: ignore[return-value]
+

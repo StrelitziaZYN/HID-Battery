@@ -104,6 +104,13 @@ def build() -> Path:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
             written.append(dst)
+    shots = ROOT / "docs" / "screenshots"
+    if shots.is_dir():
+        for item in sorted(shots.glob("*.png")):
+            dst = out / "docs" / "screenshots" / item.name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, dst)
+            written.append(dst)
 
     # 配置与资源
     for f in CONFIG:
@@ -198,6 +205,19 @@ def zip_dir(src: Path, zip_path: Path, skip_bin: bool = False) -> Path:
     return zip_path
 
 
+def portable_zip(exe: Path, zip_path: Path) -> Path:
+    """发布用的便携包：EXE + README + LICENSE，解压双击即用。"""
+    members: list[tuple[Path, str]] = [(exe, exe.name)]
+    for name in ("README.md", "LICENSE"):
+        cand = ROOT / name
+        if cand.exists():
+            members.append((cand, name))
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        for path, arc in members:
+            zf.write(path, arc)
+    return zip_path
+
+
 def main() -> int:
     out = build()
     print(f"[release] {out}")
@@ -208,7 +228,13 @@ def main() -> int:
         zip_dir(out, src, skip_bin=True)
         print(f"[zip] {full.name}  {human(full.stat().st_size)}")
         print(f"[zip] {src.name}  {human(src.stat().st_size)}")
+        exe = out / "bin" / f"{EXE_STEM}.exe"
+        if exe.exists():
+            portable = RELEASE_ROOT / f"{EXE_STEM}_v{VERSION}_win64.zip"
+            portable_zip(exe, portable)
+            print(f"[zip] {portable.name}  {human(portable.stat().st_size)}")
     return 0
+
 
 
 if __name__ == "__main__":

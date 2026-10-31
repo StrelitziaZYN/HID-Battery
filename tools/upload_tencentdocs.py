@@ -9,16 +9,19 @@ from pathlib import Path
 SKILL = Path(r"C:\Users\zhan_\.workbuddy\plugins\cache\workbuddy-builtin\tencent-docs-plugin"
              r"\5.9.3-wb.42398134.gd4692421.h480e8d1fee0f\skills\tencent-docs")
 sys.path.insert(0, str(SKILL))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import tencentdocs  # noqa: E402
 
+from app.branding import VERSION  # noqa: E402
+
 REL = Path(r"E:\Program Files\Workbuddy Files\个人vibe\HIDBattery\release"
-           r"\StrelitziaHIDBattery_v2.0.0_20261101")
+           rf"\StrelitziaHIDBattery_v{VERSION}_20261101")
 FOLDER = "UTJXdoiglGfE"
 
 ITEMS = [
-    ("Strelitzia HID Battery v2.0.0 · 使用说明", REL / "docs" / "README.md"),
+    (f"Strelitzia HID Battery v{VERSION} · 使用说明", REL / "docs" / "README.md"),
     ("Strelitzia HID Battery · 变更记录", REL / "docs" / "CHANGELOG.md"),
-    ("v2.0.0 · 产物归档清单", REL / "MANIFEST.md"),
+    (f"v{VERSION} · 产物归档清单", REL / "MANIFEST.md"),
 ]
 
 
