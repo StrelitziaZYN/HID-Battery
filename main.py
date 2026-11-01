@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import branding, history, theme, winapi                  # noqa: E402
+from app import autostart, branding, history, theme, winapi          # noqa: E402
 from app.icons import app_icon, battery_pixmap                    # noqa: E402
 from app.profiles import load_config, save_config                 # noqa: E402
 from app.scanner import scan_devices                              # noqa: E402
@@ -123,27 +123,45 @@ class TrayApp(QObject):
 
         act_open = QAction("打开面板", menu)
         act_open.triggered.connect(lambda *_: self.flyout.popup())
-        act_stats = QAction("电量统计", menu)
-        act_stats.triggered.connect(lambda *_: self.open_console("stats"))
-        act_refresh = QAction("立即刷新", menu)
-        act_refresh.triggered.connect(self.refresh)
+
         act_settings = QAction("设置", menu)
         act_settings.triggered.connect(lambda *_: self.open_console("settings"))
-        act_reset_pos = QAction("重置窗口位置", menu)
-        act_reset_pos.triggered.connect(self._reset_position)
+
+        self.act_autostart = QAction("开机自启动", menu)
+        self.act_autostart.setCheckable(True)
+        self.act_autostart.setChecked(autostart.is_enabled())
+        self.act_autostart.triggered.connect(self._toggle_autostart)
+
         act_quit = QAction("退出", menu)
         act_quit.triggered.connect(self.app.quit)
 
         menu.addAction(act_open)
-        menu.addAction(act_stats)
-        menu.addAction(act_refresh)
         menu.addSeparator()
         menu.addAction(act_settings)
-        menu.addAction(act_reset_pos)
+        menu.addSeparator()
+        menu.addAction(self.act_autostart)
         menu.addSeparator()
         menu.addAction(act_quit)
+
+        # 每次弹出前重读注册表，保证勾选状态与实际一致（设置页里改过也能同步）
+        menu.aboutToShow.connect(self._sync_autostart)
         self.tray.setContextMenu(menu)
         self._menu = menu
+
+    def _sync_autostart(self):
+        if not hasattr(self, "act_autostart"):
+            return
+        self.act_autostart.blockSignals(True)
+        self.act_autostart.setChecked(autostart.is_enabled())
+        self.act_autostart.blockSignals(False)
+
+    def _toggle_autostart(self, checked: bool):
+        """菜单勾选 → 写/删注册表；失败则把勾选拨回去。"""
+        if not autostart.set_enabled(bool(checked)):
+            self._sync_autostart()
+            return
+        if self._console is not None:
+            self._console.general_page.reload(self.config)
 
     # ------------------------------------------------------------------ #
     def _ensure_console(self):
@@ -164,7 +182,7 @@ class TrayApp(QObject):
         devices = self.flyout.devices_page._devices
         return f"上次刷新 {len(devices)} 台设备" if devices else "未检测到设备"
 
-    def open_console(self, page: str = "stats"):
+    def open_console(self, page: str = "general"):
         self.flyout.hide_animated()
         console = self._ensure_console()
         console.open_page(page)
@@ -185,8 +203,9 @@ class TrayApp(QObject):
 
     def _on_bundle_imported(self):
         if self._console is not None:
-            self._console.settings_page.reload(self.config)
-        self._on_config_changed()
+            self._console._on_bundle_imported()
+        else:
+            self._on_config_changed()
 
     def _reset_position(self):
         self.flyout.reset_position()

@@ -1,4 +1,4 @@
-"""主窗口：把电量统计与设置（通用 / 电量统计 / 接口）集中到独立的普通窗口里。
+"""主窗口：左侧导航三个标签页——通用设置 / 电量统计 / 接口设置。
 
 托盘弹出面板只负责「看一眼电量」，需要操作时点齿轮/图表打开这个窗口。
 """
@@ -14,12 +14,13 @@ from PySide6.QtWidgets import (QAbstractButton, QHBoxLayout, QLabel,
 from . import branding, theme
 from .history_page import HistoryPage
 from .icons import app_icon
-from .settings_page import SettingsPage
+from .settings_page import GeneralSettingsPage, InterfaceSettingsPage
 from .widgets import FlatButton
 
 NAV = [
+    ("general", "通用设置", "settings"),
     ("stats", "电量统计", "chart"),
-    ("settings", "设置", "settings"),
+    ("iface", "接口设置", "device"),
 ]
 
 
@@ -86,11 +87,11 @@ class ConsoleWindow(QWidget):
         super().__init__(parent)
         self.config = config
         self._devices_provider = devices_provider
-        self._current = "stats"
+        self._current = "general"
 
         self.setWindowTitle(branding.APP_NAME)
         self.setWindowIcon(QIcon(app_icon(False)))
-        self.resize(940, 720)
+        self.resize(940, 820)                      # 3:2 图表需要更充裕的纵向空间
         self.setMinimumSize(800, 560)
         self.setAcceptDrops(True)
         self.setStyleSheet(f"QWidget#consoleRoot{{background:{theme.C.WINDOW.name()};}}")
@@ -148,21 +149,30 @@ class ConsoleWindow(QWidget):
         self.stack.setStyleSheet("background: transparent;")
         content_lay.addWidget(self.stack)
 
-        self.history_page = HistoryPage(embedded=True)
-        self.settings_page = SettingsPage(config, devices_provider,
-                                          embedded=True)
-        for page in (self.history_page, self.settings_page):
+        self.general_page = GeneralSettingsPage(config, embedded=True)
+        self.history_page = HistoryPage(embedded=True, config=config)
+        self.iface_page = InterfaceSettingsPage(config, devices_provider, embedded=True)
+        for page in (self.general_page, self.history_page, self.iface_page):
             self.stack.addWidget(page)
 
-        self.settings_page.config_changed.connect(self.config_changed)
-        self.settings_page.icons_changed.connect(self.icons_changed)
-        self.settings_page.history_requested.connect(lambda: self.open_page("stats"))
-        self.settings_page.prompt_requested.connect(self.open_prompt)
+        self.general_page.config_changed.connect(self._on_config_changed)
+        self.iface_page.config_changed.connect(self._on_config_changed)
+        self.history_page.config_changed.connect(self._on_config_changed)
+        self.iface_page.icons_changed.connect(self.icons_changed)
+        self.iface_page.prompt_requested.connect(self.open_prompt)
 
         root.addWidget(content, 1)
-        self._pages = {"stats": self.history_page,
-                       "settings": self.settings_page}
-        self.open_page("stats", refresh=False)
+        self._pages = {"general": self.general_page,
+                       "stats": self.history_page,
+                       "iface": self.iface_page}
+        self.open_page("general", refresh=False)
+
+    def _on_config_changed(self):
+        """任一页改了配置：三页都重读一次（间隔 / 自启 / 插件列表可能互相影响）。"""
+        self.general_page.reload(self.config)
+        self.history_page.reload()
+        self.iface_page.reload(self.config)
+        self.config_changed.emit()
 
     # ------------------------------------------------------------------ #
     def set_status(self, text: str):
@@ -178,9 +188,11 @@ class ConsoleWindow(QWidget):
             self.btn_refresh.stop_spin()
 
     def open_page(self, key: str, refresh: bool = True):
+        if key == "settings":                      # 兼容旧入口：设置 = 通用设置页
+            key = "general"
         page = self._pages.get(key)
         if page is None:
-            key, page = "stats", self.history_page
+            key, page = "general", self.general_page
         self._current = key
         for name, item in self._nav.items():
             item.setChecked(name == key)
@@ -189,10 +201,12 @@ class ConsoleWindow(QWidget):
             self._reload_current()
 
     def _reload_current(self):
-        if self._current == "stats":
+        if self._current == "general":
+            self.general_page.reload(self.config)
+        elif self._current == "stats":
             self.history_page.reload()
-        elif self._current == "settings":
-            self.settings_page.reload(self.config)
+        elif self._current == "iface":
+            self.iface_page.reload(self.config)
 
     def open_prompt(self, device: Dict[str, Any] | None = None):
         from .prompt_page import PromptDialog
@@ -202,18 +216,22 @@ class ConsoleWindow(QWidget):
         dlg.exec()
 
     def _on_bundle_imported(self):
-        self.settings_page.reload(self.config)
+        self.general_page.reload(self.config)
+        self.history_page.reload()
+        self.iface_page.reload(self.config)
         self.config_changed.emit()
 
     def import_bundle(self, path: str) -> bool:
-        ok = self.settings_page.import_bundle(path)
-        self.open_page("settings", refresh=False)
+        ok = self.iface_page.import_bundle(path)
+        self.open_page("iface", refresh=False)
         return ok
 
     # ------------------------------------------------------------------ #
     def showEvent(self, event):                    # noqa: N802
         super().showEvent(event)
-        self.settings_page.reload(self.config)
+        self.general_page.reload(self.config)
+        self.history_page.reload()
+        self.iface_page.reload(self.config)
         self._reload_current()
         self.opened.emit()
 

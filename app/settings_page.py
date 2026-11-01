@@ -1,8 +1,8 @@
-"""设置页：划分为「通用设置 / 电量统计 / 接口设置」三个明确区域。
+"""设置窗口里的两个「设置类」页面（各自作为左侧导航的一个标签页）。
 
-- 通用设置：刷新节奏、开机自启、恢复默认
-- 电量统计：历史采样间隔、保留范围、进入统计页
-- 接口设置：协议插件、AI 接入包、设备图标、接口调试（按钮手动触发）
+- GeneralSettingsPage：通用设置（刷新节奏、开机自启、恢复默认）
+- InterfaceSettingsPage：接口设置（协议插件、AI 接入包、设备图标、接口调试）
+电量统计页在 history_page.py（含采样间隔），三页共同组成左侧导航的三个标签。
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFrame,
                                QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget)
 
 from . import autostart, icon_store, plugin_store, theme
-from .history import RETENTION_DAYS
 from .paths import CONFIG_DIR, DATA_DIR, PLUGIN_DIR
 from .probe_page import ProbePanel
 from .profiles import default_config, new_profile, save_config
@@ -187,19 +186,16 @@ class IconRow(QWidget):
             "border: 1px dashed rgba(0,0,0,45); border-radius: 7px;")
 
 
-class SettingsPage(QWidget):
+class SettingsPageBase(QWidget):
+    """设置类页面的公共外壳：标题 + 滚动区 + 内容 body。"""
+
     back_requested = Signal()
     config_changed = Signal()
-    prompt_requested = Signal()
-    icons_changed = Signal()
-    history_requested = Signal()
 
-    def __init__(self, config: dict, devices_provider: Optional[Callable[[], List[dict]]] = None,
-                 embedded: bool = False, parent=None):
+    def __init__(self, config: dict, title: str, embedded: bool = False, parent=None):
         super().__init__(parent)
         self.config = config
         self.embedded = embedded
-        self._devices_provider = devices_provider or (lambda: [])
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0 if embedded else 16, 0 if embedded else 12,
@@ -214,10 +210,10 @@ class SettingsPage(QWidget):
         head.addWidget(self.btn_back)
         if embedded:
             self.btn_back.hide()
-        title = QLabel("设置")
-        title.setFont(theme.ui_font(13, QFont.Weight.DemiBold))
-        title.setStyleSheet(f"color: {theme.C.TEXT.name()};")
-        head.addWidget(title)
+        lb = QLabel(title)
+        lb.setFont(theme.ui_font(13, QFont.Weight.DemiBold))
+        lb.setStyleSheet(f"color: {theme.C.TEXT.name()};")
+        head.addWidget(lb)
         head.addStretch(1)
         root.addLayout(head)
         root.addSpacing(10)
@@ -238,8 +234,66 @@ class SettingsPage(QWidget):
         self.scroll.setWidget(self.host)
         root.addWidget(self.scroll, 1)
 
-        # ---------------- ① 通用设置 ---------------- #
-        general = SectionCard("通用设置", "settings", "设备清单的刷新节奏与开机行为")
+    # ------------------------------------------------------------------ #
+    def reload(self, config: dict):
+        self.config = config
+        self._reload()
+
+    def _reload(self):                             # pragma: no cover - 子类实现
+        raise NotImplementedError
+
+    def _commit(self):
+        save_config(self.config)
+        self.config_changed.emit()
+
+    def _row(self, label: str, widget: QWidget, hint: str = "") -> QVBoxLayout:
+        """「左标签 + 右控件」的一行，可带右对齐的灰色说明。"""
+        col = QVBoxLayout()
+        col.setContentsMargins(2, 2, 2, 6)
+        col.setSpacing(2)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        lb = QLabel(label)
+        lb.setFont(theme.ui_font(9))
+        lb.setStyleSheet(f"color: {theme.C.TEXT_SECONDARY.name()};")
+        row.addWidget(lb)
+        row.addStretch(1)
+        row.addWidget(widget)
+        col.addLayout(row)
+        if hint:
+            tip = QLabel(hint)
+            tip.setFont(theme.ui_font(7))
+            tip.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
+            tip.setAlignment(Qt.AlignmentFlag.AlignRight)
+            tip.setWordWrap(True)                  # 长说明必须换行，否则会把整页顶宽
+            tip.setMinimumWidth(0)
+            col.addWidget(tip)
+        return col
+
+    def _divider(self) -> QFrame:
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: rgba(0,0,0,22); border: none;")
+        return line
+
+    def preferred_height(self) -> int:
+        """页面内容高度（不含面板外框留白，由 Flyout._fit 叠加）。"""
+        if self.host.layout() is not None:
+            self.host.layout().activate()
+        hint = self.host.sizeHint().height()
+        if hint <= 0:
+            return 640
+        return hint + 12 + 28 + 6 + 12
+
+
+class GeneralSettingsPage(SettingsPageBase):
+    """区域一：通用设置（刷新间隔 / 开机自启 / 恢复默认）。"""
+
+    def __init__(self, config: dict, embedded: bool = False, parent=None):
+        super().__init__(config, "通用设置", embedded, parent)
+
+        card = SectionCard("通用设置", "settings", "设备清单的刷新节奏与开机行为")
+
         self.interval = QComboBox()
         self.interval.setStyleSheet(INPUT_QSS)
         self.interval.setFont(theme.ui_font(9))
@@ -247,40 +301,67 @@ class SettingsPage(QWidget):
         for label, sec in (("30 秒", 30), ("1 分钟", 60), ("2 分钟", 120), ("5 分钟", 300)):
             self.interval.addItem(label, sec)
         self.interval.currentIndexChanged.connect(self._on_interval)
-        general.body.addLayout(self._row("刷新间隔", self.interval, "设备清单与电量读数一起按此间隔刷新"))
+        card.body.addLayout(self._row("刷新间隔", self.interval,
+                                      "设备清单与电量读数一起按此间隔刷新"))
 
         self.autostart_switch = ToggleSwitch(autostart.is_enabled())
         self.autostart_switch.toggled.connect(self._on_autostart)
-        general.body.addLayout(self._row("开机自动启动", self.autostart_switch,
-                                         "登录 Windows 后自动驻留托盘"))
+        card.body.addLayout(self._row("开机自动启动", self.autostart_switch,
+                                      "登录 Windows 后自动驻留托盘"))
 
-        general.body.addWidget(self._divider())
+        card.body.addWidget(self._divider())
         self.btn_reset = FlatButton("恢复默认", glyph=theme.ICON["refresh"])
         self.btn_reset.clicked.connect(lambda *_: self._reset())
-        general.body.addLayout(self._row("恢复默认设置", self.btn_reset,
-                                         "清空接口配置与偏好设置，回到出厂状态"))
-        self.body.addWidget(general)
+        card.body.addLayout(self._row("恢复默认设置", self.btn_reset,
+                                      "清空接口配置与偏好设置，回到出厂状态"))
 
-        # ---------------- ② 电量统计 ---------------- #
-        stats = SectionCard("电量统计", "chart", "历史采样的记录频率与保留范围")
-        self.record = QComboBox()
-        self.record.setStyleSheet(INPUT_QSS)
-        self.record.setFont(theme.ui_font(9))
-        self.record.setFixedWidth(104)
-        for label, sec in (("5 分钟", 300), ("10 分钟", 600),
-                           ("30 分钟", 1800), ("1 小时", 3600)):
-            self.record.addItem(label, sec)
-        self.record.currentIndexChanged.connect(self._on_record_interval)
-        stats.body.addLayout(self._row("记录间隔", self.record,
-                                       f"电量历史按此间隔采样，保留 {RETENTION_DAYS} 天"))
+        self.body.addWidget(card)
+        self.body.addStretch(1)
+        self.reload(config)
 
-        self.btn_stats = FlatButton("打开电量统计", glyph=theme.ICON["chart"])
-        self.btn_stats.clicked.connect(lambda *_: self.history_requested.emit())
-        stats.body.addLayout(self._row("历史记录", self.btn_stats,
-                                       "查看曲线、剩余可用时长估算，或按设备清除记录"))
-        self.body.addWidget(stats)
+    def _reload(self):
+        idx = self.interval.findData(int(self.config.get("refresh_interval", 60)))
+        self.interval.blockSignals(True)
+        self.interval.setCurrentIndex(idx if idx >= 0 else 1)
+        self.interval.blockSignals(False)
 
-        # ---------------- ③ 接口设置 ---------------- #
+        # 开机自启也可能被托盘右键菜单改过，这里始终重读注册表
+        self.autostart_switch.blockSignals(True)
+        self.autostart_switch.setChecked(autostart.is_enabled())
+        self.autostart_switch.blockSignals(False)
+
+    def _on_interval(self, _index: int):
+        self.config["refresh_interval"] = int(self.interval.currentData())
+        self._commit()
+
+    def _on_autostart(self, checked: bool):
+        if autostart.set_enabled(bool(checked)):
+            return
+        # 写注册表失败：把开关拨回去，避免界面与实际不一致
+        self.autostart_switch.blockSignals(True)
+        self.autostart_switch.setChecked(not checked)
+        self.autostart_switch.blockSignals(False)
+        self.autostart_switch.setToolTip("写入注册表失败，可能被安全软件拦截")
+
+    def _reset(self):
+        self.config.clear()
+        self.config.update(json.loads(json.dumps(default_config())))
+        self.reload(self.config)
+        self._commit()
+
+
+class InterfaceSettingsPage(SettingsPageBase):
+    """区域三：接口设置（协议插件 / AI 接入包 / 设备图标 / 接口调试）。"""
+
+    prompt_requested = Signal()
+    icons_changed = Signal()
+
+    def __init__(self, config: dict,
+                 devices_provider: Optional[Callable[[], List[dict]]] = None,
+                 embedded: bool = True, parent=None):
+        self._devices_provider = devices_provider or (lambda: [])
+        super().__init__(config, "接口设置", embedded, parent)
+
         iface = SectionCard("接口设置", "device", "协议插件、设备接入、图标与调试")
 
         iface.body.addWidget(SectionLabel("协议插件（厂商接口）"))
@@ -358,70 +439,13 @@ class SettingsPage(QWidget):
         self.data_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.data_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 2px 2px;")
         iface.body.addWidget(self.data_hint)
+
         self.body.addWidget(iface)
-
         self.body.addStretch(1)
-
         self.reload(config)
 
     # ------------------------------------------------------------------ #
-    _CHROME = 34                                  # 标题行 + 上下留白
-
-    def _row(self, label: str, widget: QWidget, hint: str = "") -> QVBoxLayout:
-        """「左标签 + 右控件」的一行，可带右对齐的灰色说明。"""
-        col = QVBoxLayout()
-        col.setContentsMargins(2, 2, 2, 6)
-        col.setSpacing(2)
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        lb = QLabel(label)
-        lb.setFont(theme.ui_font(9))
-        lb.setStyleSheet(f"color: {theme.C.TEXT_SECONDARY.name()};")
-        row.addWidget(lb)
-        row.addStretch(1)
-        row.addWidget(widget)
-        col.addLayout(row)
-        if hint:
-            tip = QLabel(hint)
-            tip.setFont(theme.ui_font(7))
-            tip.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
-            tip.setAlignment(Qt.AlignmentFlag.AlignRight)
-            tip.setWordWrap(True)                  # 长说明必须换行，否则会把整页顶宽
-            tip.setMinimumWidth(0)
-            col.addWidget(tip)
-        return col
-
-    def _divider(self) -> QFrame:
-        line = QFrame()
-        line.setFixedHeight(1)
-        line.setStyleSheet("background: rgba(0,0,0,22); border: none;")
-        return line
-
-    def preferred_height(self) -> int:
-        """页面内容高度（不含面板外框留白，由 Flyout._fit 叠加）。"""
-        if self.host.layout() is not None:
-            self.host.layout().activate()
-        hint = self.host.sizeHint().height()      # 滚动区内容真实高度
-        if hint <= 0:
-            return 640
-        return hint + 12 + 28 + 6 + 12            # 上下 margin + 标题行 + 间距
-
-    def reload(self, config: dict):
-        self.config = config
-        idx = self.interval.findData(int(config.get("refresh_interval", 60)))
-        self.interval.blockSignals(True)
-        self.interval.setCurrentIndex(idx if idx >= 0 else 1)
-        self.interval.blockSignals(False)
-
-        ridx = self.record.findData(int(config.get("record_interval", 300)))
-        self.record.blockSignals(True)
-        self.record.setCurrentIndex(ridx if ridx >= 0 else 0)
-        self.record.blockSignals(False)
-
-        self.autostart_switch.blockSignals(True)
-        self.autostart_switch.setChecked(autostart.is_enabled())
-        self.autostart_switch.blockSignals(False)
-
+    def _reload(self):
         while self.profile_box.count():
             item = self.profile_box.takeAt(0)
             w = item.widget()
@@ -430,7 +454,7 @@ class SettingsPage(QWidget):
                 w.setParent(None)
                 w.deleteLater()
 
-        for prof in config.get("profiles", []):
+        for prof in self.config.get("profiles", []):
             row = ProfileRow(prof)
             row.edited.connect(self._edit_profile)
             row.toggled.connect(self._toggle_profile)
@@ -497,28 +521,6 @@ class SettingsPage(QWidget):
             self._reload_icons()
             self.icons_changed.emit()
 
-    # ------------------------------------------------------------------ #
-    def _commit(self):
-        save_config(self.config)
-        self.config_changed.emit()
-
-    def _on_interval(self, _index: int):
-        self.config["refresh_interval"] = int(self.interval.currentData())
-        self._commit()
-
-    def _on_record_interval(self, _index: int):
-        self.config["record_interval"] = int(self.record.currentData())
-        self._commit()
-
-    def _on_autostart(self, checked: bool):
-        if autostart.set_enabled(bool(checked)):
-            return
-        # 写注册表失败：把开关拨回去，避免界面与实际不一致
-        self.autostart_switch.blockSignals(True)
-        self.autostart_switch.setChecked(not checked)
-        self.autostart_switch.blockSignals(False)
-        self.autostart_switch.setToolTip("写入注册表失败，可能被安全软件拦截")
-
     def _toggle_profile(self, pid: str, enabled: bool):
         for prof in self.config.get("profiles", []):
             if prof.get("id") == pid:
@@ -563,12 +565,6 @@ class SettingsPage(QWidget):
                 self.config.setdefault("profiles", []).append(data)
             self.reload(self.config)
             self._commit()
-
-    def _reset(self):
-        self.config.clear()
-        self.config.update(json.loads(json.dumps(default_config())))
-        self.reload(self.config)
-        self._commit()
 
     # ------------------------------------------------------------------ #
     def _set_import_hint(self, text: str, error: bool = False):

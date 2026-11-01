@@ -107,7 +107,8 @@ def step2():
     console = ta._ensure_console()
     console.show()
     app.processEvents()
-    for key, name in (("stats", "live_history"), ("settings", "live_settings")):
+    for key, name in (("stats", "live_history"), ("general", "live_general"),
+                      ("iface", "live_settings")):
         console.open_page(key)
         app.processEvents()
         app.processEvents()
@@ -115,19 +116,45 @@ def step2():
               f"page {console.stack.currentWidget().__class__.__name__}")
         console.grab().save(os.path.join(OUT, f"{name}.png"))
 
-    sp = console.settings_page
+    sp = console.iface_page
     icon_rows = [w for w in sp.icon_box.parentWidget().findChildren(object)
                  if w.__class__.__name__ == "IconRow"]
-    print("settings scroll max:", sp.scroll.verticalScrollBar().maximum(),
+    nav_labels = [item.text() for item in console._nav.values()]
+    print("nav tabs:", nav_labels)
+    print("tabs:", console.stack.count(),
+          "| general/iface cards:",
+          len([c for c in console.general_page.host.findChildren(object)
+               if c.__class__.__name__ == "SectionCard"]),
+          len([c for c in sp.host.findChildren(object)
+               if c.__class__.__name__ == "SectionCard"]),
           "| icon rows:", len(icon_rows))
-    print("settings sections:", [c.__class__.__name__ for c in sp.host.findChildren(object)
-                                 if c.__class__.__name__ == "SectionCard"],
-          "| nav:", len(console._nav))
-    # 调试必须默认不触发：切到设置页、刷新后日志应为空
-    console.open_page("settings")
+    # 调试必须默认不触发：切到接口设置页后日志应为空
+    console.open_page("iface")
     wait(300)
     print("probe idle (no auto):", sp.probe_panel.status.text(),
           "| log empty:", not sp.probe_panel.text.toPlainText())
+
+    # 图表 3:2：窗口缩放后宽高比仍为 1.5
+    ratios = []
+    for w, h in ((940, 720), (1120, 820), (820, 600)):
+        console.resize(w, h)
+        for _ in range(8):
+            app.processEvents()
+        console.open_page("stats", refresh=False)
+        for _ in range(6):
+            app.processEvents()
+        ch = console.history_page.chart
+        ratios.append(f"{w}x{h}->{ch.width()}x{ch.height()}({ch.width()/max(ch.height(),1):.3f})")
+    print("chart ratio:", " | ".join(ratios))
+    console.resize(940, 720)
+
+    # 托盘菜单结构与分隔线
+    menu_items = []
+    for act in ta._menu.actions():
+        menu_items.append("---" if act.isSeparator() else act.text())
+    print("tray menu:", menu_items,
+          "| autostart checkable:", ta.act_autostart.isCheckable())
+
     print("history chart:", console.history_page.chart.width(),
           "x", console.history_page.chart.height())
     console.close()
@@ -172,7 +199,7 @@ def step2():
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(bundle, fh, ensure_ascii=False)
         ok = console.import_bundle(path)
-        print("bundle import:", ok, "|", console.settings_page.import_hint.text()[:46],
+        print("bundle import:", ok, "|", console.iface_page.import_hint.text()[:46],
               "| profiles:", len(ta.config["profiles"]))
     finally:
         shutil.move(backup, profiles.PROFILE_PATH)

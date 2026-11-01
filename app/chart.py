@@ -8,10 +8,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (QColor, QFont, QLinearGradient, QPainter, QPainterPath,
                            QPen)
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from . import theme
 
@@ -19,14 +19,36 @@ LOW_THRESHOLD = 20                                 # 低于此值画红色阈值
 
 
 class LineChart(QWidget):
-    def __init__(self, parent=None, height: int = 168):
+    """折线图。默认锁定 3:2 宽高比：宽度随窗口变，高度按比例反推。"""
+
+    def __init__(self, parent=None, height: int = 168, ratio: tuple[int, int] = (3, 2)):
         super().__init__(parent)
         self._points: List[Tuple[int, float]] = []
         self._span = 24 * 3600
         self._now: int = 0
         self._fmt = "%H:%M"
-        self.setMinimumHeight(height)
+        self._ratio = ratio if ratio[0] > 0 and ratio[1] > 0 else (3, 2)
+        self.setMinimumSize(180, max(110, int(height)))
+        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)             # 让布局按宽度反推高度
+        self.setSizePolicy(policy)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+
+    # ------------------------------------------------------------------ #
+    def hasHeightForWidth(self) -> bool:           # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:   # noqa: N802
+        return max(110, int(round(width * self._ratio[1] / self._ratio[0])))
+
+    def sizeHint(self) -> QSize:                   # noqa: N802
+        return QSize(600, int(round(600 * self._ratio[1] / self._ratio[0])))
+
+    def minimumSizeHint(self) -> QSize:            # noqa: N802
+        return QSize(180, 130)
+
+    def aspect_ratio(self) -> tuple[int, int]:
+        return self._ratio
 
     # ------------------------------------------------------------------ #
     def set_data(self, points: Sequence[Tuple[int, float]], span: int,

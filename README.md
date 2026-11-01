@@ -18,13 +18,19 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 ![悬浮面板](docs/screenshots/panel.png)
 
-**电量统计**（面板右上角折线图标）
+**设置窗口**（面板右上角齿轮，左侧三个标签页：通用设置 / 电量统计 / 接口设置）
+
+通用设置：
+
+![通用设置](docs/screenshots/general.png)
+
+电量统计（图表固定 3:2，随窗口缩放）：
 
 ![电量统计](docs/screenshots/history.png)
 
-**接口设置**（面板右上角齿轮）
+接口设置：
 
-![设置](docs/screenshots/settings.png)
+![接口设置](docs/screenshots/settings.png)
 
 ## 下载与运行
 
