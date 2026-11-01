@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.branding import APP_NAME, VERSION  # noqa: E402
+from app.branding import APP_NAME, EXE_STEM, VERSION  # noqa: E402
 
 API = "https://api.github.com"
 UPLOAD = "https://uploads.github.com"
@@ -146,9 +146,9 @@ def main() -> int:
     print(f"[auth] {me['login']}（token 长度 {len(token)}，不落盘）")
 
     rel_dir = ROOT / "release"
-    portable = rel_dir / f"StrelitziaHIDBattery_v{VERSION}_win64.zip"
-    src = rel_dir / f"StrelitziaHIDBattery_v{VERSION}_20261101_src.zip"
-    assets = [p for p in (portable, src) if p.exists()]
+    portable = rel_dir / f"{EXE_STEM}_v{VERSION}_win64.zip"
+    srcs = sorted(rel_dir.glob(f"{EXE_STEM}_v{VERSION}_*_src.zip"))
+    assets = [p for p in (portable, srcs[-1] if srcs else None) if p and p.exists()]
     if not assets:
         print(f"ERROR: 找不到资产，先跑 build_exe.py / make_release.py")
         return 4
