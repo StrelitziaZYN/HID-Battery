@@ -1,6 +1,6 @@
 """托盘弹出面板（只显示设备列表）。
 
-设置 / 电量统计 / 接口探测都在独立窗口 `app.console.ConsoleWindow` 里，
+设置 / 电量统计都在独立窗口 `app.console.ConsoleWindow` 里，
 这个面板只做一件事：靠近托盘弹出来、失焦自动收起。
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""端到端冒烟：托盘 → 弹出面板 → 设备行 → 提示词 → 独立窗口（统计/设置/探测）→ 失焦收起。"""
+"""端到端冒烟：托盘 → 弹出面板 → 设备行 → 提示词 → 独立窗口（统计/设置）→ 失焦收起。"""
 import os
 import sys
 import time
@@ -107,8 +107,7 @@ def step2():
     console = ta._ensure_console()
     console.show()
     app.processEvents()
-    for key, name in (("stats", "live_history"), ("settings", "live_settings"),
-                      ("probe", "live_probe")):
+    for key, name in (("stats", "live_history"), ("settings", "live_settings")):
         console.open_page(key)
         app.processEvents()
         app.processEvents()
@@ -121,17 +120,18 @@ def step2():
                  if w.__class__.__name__ == "IconRow"]
     print("settings scroll max:", sp.scroll.verticalScrollBar().maximum(),
           "| icon rows:", len(icon_rows))
-    print("probe status:", console.probe_page.status.text())
+    print("settings sections:", [c.__class__.__name__ for c in sp.host.findChildren(object)
+                                 if c.__class__.__name__ == "SectionCard"],
+          "| nav:", len(console._nav))
+    # 调试必须默认不触发：切到设置页、刷新后日志应为空
+    console.open_page("settings")
+    wait(300)
+    print("probe idle (no auto):", sp.probe_panel.status.text(),
+          "| log empty:", not sp.probe_panel.text.toPlainText())
     print("history chart:", console.history_page.chart.width(),
           "x", console.history_page.chart.height())
     console.close()
     wait(300)
-
-    # 设置页 → 接口探测（页面切换）
-    console.open_page("settings")
-    console.settings_page.probe_requested.emit()
-    wait(300)
-    print("settings -> probe switch:", console.stack.currentWidget().__class__.__name__)
 
     # UI 层导入接入包（临时文件，导入后回滚）
     import json

@@ -127,7 +127,7 @@ class TrayApp(QObject):
         act_stats.triggered.connect(lambda *_: self.open_console("stats"))
         act_refresh = QAction("立即刷新", menu)
         act_refresh.triggered.connect(self.refresh)
-        act_settings = QAction("接口设置", menu)
+        act_settings = QAction("设置", menu)
         act_settings.triggered.connect(lambda *_: self.open_console("settings"))
         act_reset_pos = QAction("重置窗口位置", menu)
         act_reset_pos.triggered.connect(self._reset_position)

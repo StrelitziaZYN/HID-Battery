@@ -24,11 +24,11 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 **接口设置**（面板右上角齿轮）
 
-![接口设置](docs/screenshots/settings.png)
+![设置](docs/screenshots/settings.png)
 
 ## 下载与运行
 
-到 [Releases](https://github.com/StrelitziaZYN/HID-Battery/releases/latest) 下载 `StrelitziaHIDBattery_v1.0_win64.zip`，
+到 [Releases](https://github.com/StrelitziaZYN/HID-Battery/releases/latest) 下载最新的 `win64.zip`，
 解压后双击 `StrelitziaHIDBattery.exe`。首次运行会在 EXE 旁边生成 `config/ protocols/ assets/ data/` 四个目录，
 换电脑只拷 EXE 也能跑；想连配置和历史一起带走就整个文件夹拷过去。
 
@@ -42,7 +42,7 @@ Windows 默认把新图标折叠进任务栏的 `^` 里。点开 `^`，把电池
 
 **读不到电量 / 一直是「正在读取设备…」？**
 多半是设备休眠，或者接收器被厂商驱动独占。动一下设备唤醒后点刷新；超过 15 秒会提示「读取超时，稍后自动重试」，
-下一轮会自动恢复。仍不行就到「接口探测」页看回包里有没有数据。
+下一轮会自动恢复。仍不行就到「设置 → 接口设置 → 接口调试」，点「开始调试」看回包里有没有数据。
 
 **设备没出现在面板里？**
 说明还没有对应协议。在面板点这台设备 → 生成提示词 → 贴给任意 AI → 把它返回的 `.json` 接入包拖进窗口导入，

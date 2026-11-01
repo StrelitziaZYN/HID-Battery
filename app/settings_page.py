@@ -1,4 +1,9 @@
-"""接口设置页：协议插件接口管理 + 设备图标上传 + 接入新设备入口 + 诊断。"""
+"""设置页：划分为「通用设置 / 电量统计 / 接口设置」三个明确区域。
+
+- 通用设置：刷新节奏、开机自启、恢复默认
+- 电量统计：历史采样间隔、保留范围、进入统计页
+- 接口设置：协议插件、AI 接入包、设备图标、接口调试（按钮手动触发）
+"""
 from __future__ import annotations
 
 import copy
@@ -7,13 +12,15 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPixmap
+from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QLineEdit,
                                QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget)
 
 from . import autostart, icon_store, plugin_store, theme
+from .history import RETENTION_DAYS
 from .paths import CONFIG_DIR, DATA_DIR, PLUGIN_DIR
+from .probe_page import ProbePanel
 from .profiles import default_config, new_profile, save_config
 from .protocols import all_protocols, get_protocol
 from .widgets import ElidedLabel, FlatButton, IconButton, Surface, ToggleSwitch
@@ -26,6 +33,43 @@ class SectionLabel(QLabel):
         super().__init__(text)
         self.setFont(theme.ui_font(8, QFont.Weight.DemiBold))
         self.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 4px 2px 2px 2px;")
+
+
+class SectionCard(Surface):
+    """一个区域卡片：图标 + 标题 + 一句话说明，下面挂内容。"""
+
+    def __init__(self, title: str, glyph: str, subtitle: str = "", parent=None):
+        super().__init__(parent, radius=10, fill=theme.C.SURFACE, border=theme.C.STROKE)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 12, 16, 14)
+        outer.setSpacing(8)
+
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(9)
+        icon = theme.icon_label(theme.ICON.get(glyph, glyph), size=12, color=theme.C.ACCENT)
+        head.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+
+        col = QVBoxLayout()
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(1)
+        name = QLabel(title)
+        name.setFont(theme.ui_font(10, QFont.Weight.DemiBold))
+        name.setStyleSheet(f"color: {theme.C.TEXT.name()};")
+        col.addWidget(name)
+        if subtitle:
+            tip = QLabel(subtitle)
+            tip.setFont(theme.ui_font(7))
+            tip.setWordWrap(True)
+            tip.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
+            col.addWidget(tip)
+        head.addLayout(col, 1)
+        outer.addLayout(head)
+
+        self.body = QVBoxLayout()
+        self.body.setContentsMargins(0, 2, 0, 0)
+        self.body.setSpacing(2)
+        outer.addLayout(self.body)
 
 
 class ProfileRow(QWidget):
@@ -149,7 +193,6 @@ class SettingsPage(QWidget):
     prompt_requested = Signal()
     icons_changed = Signal()
     history_requested = Signal()
-    probe_requested = Signal()
 
     def __init__(self, config: dict, devices_provider: Optional[Callable[[], List[dict]]] = None,
                  embedded: bool = False, parent=None):
@@ -171,7 +214,7 @@ class SettingsPage(QWidget):
         head.addWidget(self.btn_back)
         if embedded:
             self.btn_back.hide()
-        title = QLabel("接口设置")
+        title = QLabel("设置")
         title.setFont(theme.ui_font(13, QFont.Weight.DemiBold))
         title.setStyleSheet(f"color: {theme.C.TEXT.name()};")
         head.addWidget(title)
@@ -191,12 +234,12 @@ class SettingsPage(QWidget):
         self.host.setStyleSheet("background: transparent;")
         self.body = QVBoxLayout(self.host)
         self.body.setContentsMargins(0, 0, 10, 0)
-        self.body.setSpacing(4)
+        self.body.setSpacing(12)
         self.scroll.setWidget(self.host)
         root.addWidget(self.scroll, 1)
 
-        self.body.addWidget(SectionLabel("通用"))
-
+        # ---------------- ① 通用设置 ---------------- #
+        general = SectionCard("通用设置", "settings", "设备清单的刷新节奏与开机行为")
         self.interval = QComboBox()
         self.interval.setStyleSheet(INPUT_QSS)
         self.interval.setFont(theme.ui_font(9))
@@ -204,8 +247,22 @@ class SettingsPage(QWidget):
         for label, sec in (("30 秒", 30), ("1 分钟", 60), ("2 分钟", 120), ("5 分钟", 300)):
             self.interval.addItem(label, sec)
         self.interval.currentIndexChanged.connect(self._on_interval)
-        self.body.addLayout(self._row("刷新间隔", self.interval, "设备清单与电量读数一起按此间隔刷新"))
+        general.body.addLayout(self._row("刷新间隔", self.interval, "设备清单与电量读数一起按此间隔刷新"))
 
+        self.autostart_switch = ToggleSwitch(autostart.is_enabled())
+        self.autostart_switch.toggled.connect(self._on_autostart)
+        general.body.addLayout(self._row("开机自动启动", self.autostart_switch,
+                                         "登录 Windows 后自动驻留托盘"))
+
+        general.body.addWidget(self._divider())
+        self.btn_reset = FlatButton("恢复默认", glyph=theme.ICON["refresh"])
+        self.btn_reset.clicked.connect(lambda *_: self._reset())
+        general.body.addLayout(self._row("恢复默认设置", self.btn_reset,
+                                         "清空接口配置与偏好设置，回到出厂状态"))
+        self.body.addWidget(general)
+
+        # ---------------- ② 电量统计 ---------------- #
+        stats = SectionCard("电量统计", "chart", "历史采样的记录频率与保留范围")
         self.record = QComboBox()
         self.record.setStyleSheet(INPUT_QSS)
         self.record.setFont(theme.ui_font(9))
@@ -214,17 +271,22 @@ class SettingsPage(QWidget):
                            ("30 分钟", 1800), ("1 小时", 3600)):
             self.record.addItem(label, sec)
         self.record.currentIndexChanged.connect(self._on_record_interval)
-        self.body.addLayout(self._row("记录间隔", self.record, "电量历史按此间隔采样并保留 90 天"))
+        stats.body.addLayout(self._row("记录间隔", self.record,
+                                       f"电量历史按此间隔采样，保留 {RETENTION_DAYS} 天"))
 
-        self.autostart_switch = ToggleSwitch(autostart.is_enabled())
-        self.autostart_switch.toggled.connect(self._on_autostart)
-        self.body.addLayout(self._row("开机自动启动", self.autostart_switch,
-                                      "登录 Windows 后自动驻留托盘"))
+        self.btn_stats = FlatButton("打开电量统计", glyph=theme.ICON["chart"])
+        self.btn_stats.clicked.connect(lambda *_: self.history_requested.emit())
+        stats.body.addLayout(self._row("历史记录", self.btn_stats,
+                                       "查看曲线、剩余可用时长估算，或按设备清除记录"))
+        self.body.addWidget(stats)
 
-        self.body.addWidget(SectionLabel("厂商接口（协议插件）"))
+        # ---------------- ③ 接口设置 ---------------- #
+        iface = SectionCard("接口设置", "device", "协议插件、设备接入、图标与调试")
+
+        iface.body.addWidget(SectionLabel("协议插件（厂商接口）"))
         self.profile_box = QVBoxLayout()
         self.profile_box.setSpacing(2)
-        self.body.addLayout(self.profile_box)
+        iface.body.addLayout(self.profile_box)
 
         add_row = QHBoxLayout()
         add_row.setContentsMargins(0, 4, 0, 2)
@@ -232,9 +294,9 @@ class SettingsPage(QWidget):
         self.btn_add.clicked.connect(lambda *_: self._add_profile())
         add_row.addWidget(self.btn_add)
         add_row.addStretch(1)
-        self.body.addLayout(add_row)
+        iface.body.addLayout(add_row)
 
-        self.body.addWidget(SectionLabel("设备接入（AI 接入包）"))
+        iface.body.addWidget(SectionLabel("设备接入（AI 接入包）"))
         newdev = QHBoxLayout()
         newdev.setContentsMargins(0, 0, 0, 2)
         newdev.setSpacing(6)
@@ -245,7 +307,7 @@ class SettingsPage(QWidget):
         newdev.addWidget(self.btn_new)
         newdev.addWidget(self.btn_import)
         newdev.addStretch(1)
-        self.body.addLayout(newdev)
+        iface.body.addLayout(newdev)
 
         newdev_hint = QLabel("① 点「检测设备并生成提示词」，把提示词交给 AI；"
                              "② AI 会给出一个 .json 接入包；③ 点「导入接入包」选中它 —— "
@@ -253,51 +315,50 @@ class SettingsPage(QWidget):
         newdev_hint.setWordWrap(True)
         newdev_hint.setFont(theme.ui_font(7))
         newdev_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 4px 2px;")
-        self.body.addWidget(newdev_hint)
+        iface.body.addWidget(newdev_hint)
 
         self.import_hint = QLabel("")
         self.import_hint.setWordWrap(True)
         self.import_hint.setFont(theme.ui_font(7))
         self.import_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 4px 2px;")
         self.import_hint.hide()
-        self.body.addWidget(self.import_hint)
+        iface.body.addWidget(self.import_hint)
 
-        self.body.addWidget(SectionLabel("设备图标（本机上传）"))
+        iface.body.addWidget(SectionLabel("设备图标（本机上传）"))
         self.icon_box = QVBoxLayout()
         self.icon_box.setSpacing(2)
-        self.body.addLayout(self.icon_box)
+        iface.body.addLayout(self.icon_box)
 
         self.icon_hint = QLabel("")
         self.icon_hint.setWordWrap(True)
         self.icon_hint.setFont(theme.ui_font(7))
         self.icon_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 2px 2px 4px 2px;")
-        self.body.addWidget(self.icon_hint)
+        iface.body.addWidget(self.icon_hint)
 
-        self.body.addWidget(SectionLabel("调试与诊断"))
-        diag = QHBoxLayout()
-        diag.setContentsMargins(0, 0, 0, 4)
-        diag.setSpacing(6)
-        self.btn_probe = FlatButton("探测回包", glyph=theme.ICON["info"])
-        self.btn_probe.clicked.connect(lambda *_: self.probe_requested.emit())
-        self.btn_reset = FlatButton("恢复默认", glyph=theme.ICON["refresh"])
-        self.btn_reset.clicked.connect(lambda *_: self._reset())
+        iface.body.addWidget(self._divider())
+        self.probe_panel = ProbePanel(lambda: self.config)
+        iface.body.addWidget(self.probe_panel)
+
+        iface.body.addWidget(self._divider())
+        tools = QHBoxLayout()
+        tools.setContentsMargins(0, 4, 0, 4)
+        tools.setSpacing(6)
         self.btn_example = FlatButton("导出示例接入包")
         self.btn_example.clicked.connect(lambda *_: self._export_example())
         self.btn_folder = FlatButton("打开数据目录", glyph=theme.ICON["device"])
         self.btn_folder.clicked.connect(lambda *_: self._open_folder())
-        diag.addWidget(self.btn_probe)
-        diag.addWidget(self.btn_example)
-        diag.addWidget(self.btn_folder)
-        diag.addWidget(self.btn_reset)
-        diag.addStretch(1)
-        self.body.addLayout(diag)
+        tools.addWidget(self.btn_example)
+        tools.addWidget(self.btn_folder)
+        tools.addStretch(1)
+        iface.body.addLayout(tools)
 
         self.data_hint = QLabel(f"数据目录：{DATA_DIR}　·　用户插件：{PLUGIN_DIR}")
         self.data_hint.setWordWrap(True)
         self.data_hint.setFont(theme.ui_font(7))
         self.data_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.data_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 2px 2px;")
-        self.body.addWidget(self.data_hint)
+        iface.body.addWidget(self.data_hint)
+        self.body.addWidget(iface)
 
         self.body.addStretch(1)
 
@@ -329,6 +390,12 @@ class SettingsPage(QWidget):
             tip.setMinimumWidth(0)
             col.addWidget(tip)
         return col
+
+    def _divider(self) -> QFrame:
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: rgba(0,0,0,22); border: none;")
+        return line
 
     def preferred_height(self) -> int:
         """页面内容高度（不含面板外框留白，由 Flyout._fit 叠加）。"""

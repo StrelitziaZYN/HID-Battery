@@ -1,4 +1,4 @@
-"""主窗口：把电量统计、接口设置、接口探测集中到一个独立的普通窗口里。
+"""主窗口：把电量统计与设置（通用 / 电量统计 / 接口）集中到独立的普通窗口里。
 
 托盘弹出面板只负责「看一眼电量」，需要操作时点齿轮/图表打开这个窗口。
 """
@@ -14,14 +14,12 @@ from PySide6.QtWidgets import (QAbstractButton, QHBoxLayout, QLabel,
 from . import branding, theme
 from .history_page import HistoryPage
 from .icons import app_icon
-from .probe_page import ProbePage
 from .settings_page import SettingsPage
 from .widgets import FlatButton
 
 NAV = [
     ("stats", "电量统计", "chart"),
-    ("settings", "接口设置", "settings"),
-    ("probe", "接口探测", "info"),
+    ("settings", "设置", "settings"),
 ]
 
 
@@ -153,20 +151,17 @@ class ConsoleWindow(QWidget):
         self.history_page = HistoryPage(embedded=True)
         self.settings_page = SettingsPage(config, devices_provider,
                                           embedded=True)
-        self.probe_page = ProbePage(lambda: self.config)
-        for page in (self.history_page, self.settings_page, self.probe_page):
+        for page in (self.history_page, self.settings_page):
             self.stack.addWidget(page)
 
         self.settings_page.config_changed.connect(self.config_changed)
         self.settings_page.icons_changed.connect(self.icons_changed)
         self.settings_page.history_requested.connect(lambda: self.open_page("stats"))
-        self.settings_page.probe_requested.connect(lambda: self.open_page("probe"))
         self.settings_page.prompt_requested.connect(self.open_prompt)
 
         root.addWidget(content, 1)
         self._pages = {"stats": self.history_page,
-                       "settings": self.settings_page,
-                       "probe": self.probe_page}
+                       "settings": self.settings_page}
         self.open_page("stats", refresh=False)
 
     # ------------------------------------------------------------------ #
@@ -198,8 +193,6 @@ class ConsoleWindow(QWidget):
             self.history_page.reload()
         elif self._current == "settings":
             self.settings_page.reload(self.config)
-        elif self._current == "probe":
-            self.probe_page.auto_run()
 
     def open_prompt(self, device: Dict[str, Any] | None = None):
         from .prompt_page import PromptDialog

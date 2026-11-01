@@ -59,7 +59,7 @@ def main() -> int:
 
     console = ConsoleWindow(config, lambda: list(devices))
     console.show()
-    for key, name in (("stats", "history"), ("settings", "settings"), ("probe", "probe")):
+    for key, name in (("stats", "history"), ("settings", "settings")):
         console.open_page(key)
         app.processEvents()
         console.grab().save(os.path.join(OUT, name + ".png"))
