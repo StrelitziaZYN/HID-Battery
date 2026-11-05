@@ -28,6 +28,11 @@ RANGES: Dict[str, Tuple[int, int, str]] = {
 
 RETENTION_DAYS = 90
 
+# 续航估算窗口：用最近 30 天的充放电循环，而不是只看当天
+ENDURANCE_DAYS = 30
+MIN_CYCLE_HOURS = 0.5          # 一次放电至少观察半小时，否则不参与估算
+MIN_CYCLE_DROP = 20            # 至少掉了 20 个点，折算才不至于被噪声放大
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS samples (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,16 +169,39 @@ def _slope(pairs: List[Tuple[int, int]]) -> Optional[float]:
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den
 
 
+def _segments(rows) -> List[List[Tuple[int, int]]]:
+    """把 (ts, percent, charging) 样本按充电动作切成若干「放电段」。
+
+    30 天窗口里一定有多次充电，整段拟合会被充电造成的锯齿拉平，
+    所以必须先按充电点切开，每段内单独算斜率。
+    """
+    segs: List[List[Tuple[int, int]]] = []
+    cur: List[Tuple[int, int]] = []
+    for ts, pct, charging in rows:
+        if charging:
+            if cur:
+                segs.append(cur)
+                cur = []
+            continue
+        cur.append((int(ts), int(pct)))
+    if cur:
+        segs.append(cur)
+    return segs
+
+
 def predict(uid: str, now: Optional[int] = None) -> Dict[str, Any]:
-    """用近 24 小时（不够则用全部）的放电样本估算还能用多久。"""
+    """用近 30 天（不够则用全部）的放电样本估算还能用多久。
+
+    速率取各放电段斜率的中位数，避免某一次异常掉电把结论带偏。
+    """
     end = int(now if now is not None else time.time())
     with _db() as conn:
         rows = conn.execute(
-            "SELECT ts, percent, charging FROM samples WHERE uid=? AND charging=0 "
-            "AND ts>=? ORDER BY ts", (uid, end - 24 * 3600)).fetchall()
-        if len(rows) < 3:
+            "SELECT ts, percent, charging FROM samples WHERE uid=? AND ts>=? ORDER BY ts",
+            (uid, end - ENDURANCE_DAYS * 86400)).fetchall()
+        if len([r for r in rows if not r[2]]) < 3:
             rows = conn.execute(
-                "SELECT ts, percent, charging FROM samples WHERE uid=? AND charging=0 "
+                "SELECT ts, percent, charging FROM samples WHERE uid=? "
                 "ORDER BY ts DESC LIMIT 400", (uid,)).fetchall()[::-1]
         last = conn.execute(
             "SELECT percent, charging, ts FROM samples WHERE uid=? ORDER BY ts DESC LIMIT 1",
@@ -185,25 +213,95 @@ def predict(uid: str, now: Optional[int] = None) -> Dict[str, Any]:
     if charging:
         return {"ready": False, "reason": "正在充电", "percent": percent}
 
-    pairs = [(int(r[0]), int(r[1])) for r in rows]
-    slope = _slope(pairs)
-    if slope is None:
-        return {"ready": False, "reason": "数据不足（至少需要 3 次放电采样）", "percent": percent}
+    pairs = [(int(r[0]), int(r[1])) for r in rows if not r[2]]
+    segs = _segments(rows)
+    rates: List[float] = []
+    for seg in segs:
+        if len(seg) < 3 or seg[-1][0] - seg[0][0] < 0.4 * 3600:
+            continue
+        slope = _slope(seg)
+        if slope is not None and -slope > 0.05:
+            rates.append(-slope)
 
-    drain = -slope                                  # %/小时，正数表示在掉电
+    if not rates:                                   # 分段算不出来，退回整体拟合
+        slope = _slope(pairs)
+        if slope is not None and -slope > 0.05:
+            rates = [-slope]
+
+    if not rates:
+        if len(pairs) < 3:
+            return {"ready": False, "reason": "数据不足（至少需要 3 次放电采样）",
+                    "percent": percent}
+        return {"ready": False, "reason": "近 30 天电量基本没变化",
+                "percent": percent, "rate": 0.0}
+
+    rates.sort()
+    drain = rates[len(rates) // 2]
     span_h = (pairs[-1][0] - pairs[0][0]) / 3600.0
-    if drain <= 0.2:
-        return {"ready": False, "reason": "近 24 小时电量基本没变化",
-                "percent": percent, "rate": round(drain, 2)}
-    hours = percent / drain
     return {
         "ready": True,
-        "hours": min(hours, 999.0),
+        "hours": min(percent / drain, 999.0),
         "rate": round(drain, 2),
         "percent": percent,
         "window_h": round(span_h, 1),
         "samples": len(pairs),
+        "cycles": len(rates),
         "updated": last_ts,
+    }
+
+
+def endurance(uid: str, now: Optional[int] = None, days: int = ENDURANCE_DAYS
+              ) -> Dict[str, Any]:
+    """估算「每次充满电后最长能用多久」，数据取最近 days 天（默认 30 天）。
+
+    做法：把样本按 charging 切成充电段 / 放电段，一个放电段就是一次「充电后用机」：
+      * 起点电量 ≥ 90%（确实充满再用），样本 ≥ 3 个，跨度 ≥ 0.5 小时；
+      * 期间掉电 ≥ 20 个点，避免把待机 1% 的抖动当成放电；
+      * 该段实测掉电速率 = 掉电量 / 实测小时数，再按此速率折算到 0%，
+        得到这次循环「满电理论可用时长」。
+    取所有循环里折算值最大的一次作为「最长可用」，同时给出中位数作参照。
+    """
+    end = int(now if now is not None else time.time())
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT ts, percent, charging FROM samples WHERE uid=? AND ts>=? ORDER BY ts",
+            (uid, end - days * 86400)).fetchall()
+
+    segs = _segments(rows)
+
+    cycles: List[Dict[str, Any]] = []
+    for seg in segs:
+        if len(seg) < 3:
+            continue
+        t0, p0 = seg[0]
+        t1, p1 = seg[-1]
+        hours = (t1 - t0) / 3600.0
+        if hours < MIN_CYCLE_HOURS or p0 < 90:
+            continue
+        drop = p0 - p1
+        if drop < MIN_CYCLE_DROP:
+            continue
+        rate = drop / hours                          # %/小时
+        cycles.append({"measured_h": hours, "full_h": p0 / rate, "rate": rate,
+                       "start": p0, "end": p1, "ts": t0})
+
+    if not cycles:
+        return {"ready": False, "days": days,
+                "reason": f"近 {days} 天还没有完整记录：充满后用到 20% 以下会记一次"}
+
+    best = max(cycles, key=lambda c: c["full_h"])
+    fulls = sorted(c["full_h"] for c in cycles)
+    median = fulls[len(fulls) // 2]
+    return {
+        "ready": True,
+        "hours": round(min(best["full_h"], 720.0), 1),
+        "median": round(median, 1),
+        "cycles": len(cycles),
+        "days": days,
+        "start": best["start"],
+        "end": best["end"],
+        "measured_h": round(best["measured_h"], 1),
+        "rate": round(best["rate"], 2),
     }
 
 

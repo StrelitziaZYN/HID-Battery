@@ -10,7 +10,7 @@ PyInstaller 单文件模式会把代码解到临时目录（sys._MEIPASS，退�
     data/history.db          电量历史
 
 若 EXE 被放到 Program Files 这类不可写目录，则整棵目录退回到
-%LOCALAPPDATA%\\StrelitziaHIDBattery。
+%LOCALAPPDATA%\\StrelitziaHIDBattery（`USING_EXE_DIR` 为 False，界面会标注原因）。
 """
 from __future__ import annotations
 
@@ -49,8 +49,12 @@ def _fallback_dir() -> str:
     return new
 
 
-APP_DIR = _bundle_dir()
-DATA_DIR = APP_DIR if _writable(APP_DIR) else _fallback_dir()
+APP_DIR = _bundle_dir()                            # 兼容旧引用
+EXE_DIR = APP_DIR                                  # 程序自身所在目录（EXE 旁 / 源码项目根）
+DATA_DIR = EXE_DIR if _writable(EXE_DIR) else _fallback_dir()
+USING_EXE_DIR = os.path.normcase(os.path.abspath(DATA_DIR)) == \
+    os.path.normcase(os.path.abspath(EXE_DIR))
+DATA_DIR_NOTE = "" if USING_EXE_DIR else f"EXE 目录不可写，已切换到 {DATA_DIR}"
 
 CONFIG_DIR = os.path.join(DATA_DIR, "config")
 ASSETS_DIR = os.path.join(DATA_DIR, "assets")

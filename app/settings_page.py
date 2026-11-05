@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFrame,
                                QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget)
 
 from . import autostart, icon_store, plugin_store, theme
-from .paths import CONFIG_DIR, DATA_DIR, PLUGIN_DIR
+from .paths import (CONFIG_DIR, DATA_DIR, DATA_DIR_NOTE, EXE_DIR, IS_FROZEN,
+                    PLUGIN_DIR, USING_EXE_DIR)
 from .probe_page import ProbePanel
 from .profiles import default_config, new_profile, save_config
 from .protocols import all_protocols, get_protocol
@@ -433,7 +434,7 @@ class InterfaceSettingsPage(SettingsPageBase):
         tools.addStretch(1)
         iface.body.addLayout(tools)
 
-        self.data_hint = QLabel(f"数据目录：{DATA_DIR}　·　用户插件：{PLUGIN_DIR}")
+        self.data_hint = QLabel(self._data_hint_text())
         self.data_hint.setWordWrap(True)
         self.data_hint.setFont(theme.ui_font(7))
         self.data_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -602,6 +603,15 @@ class InterfaceSettingsPage(SettingsPageBase):
     def _export_example(self):
         path = plugin_store.write_example(CONFIG_DIR)
         self._set_import_hint(f"示例接入包已写入：{path}")
+
+    @staticmethod
+    def _data_hint_text() -> str:
+        """数据目录固定在 EXE 旁边；只有该目录不可写时才切到用户目录并说明原因。"""
+        if USING_EXE_DIR:
+            where = "当前 EXE 所在路径" if IS_FROZEN else "程序所在目录（源码运行）"
+            return f"数据目录：{DATA_DIR}（{where}）　·　用户插件：{PLUGIN_DIR}"
+        return (f"数据目录：{DATA_DIR}（{DATA_DIR_NOTE}）　·　"
+                f"程序目录：{EXE_DIR}　·　用户插件：{PLUGIN_DIR}")
 
     def _open_folder(self):
         os.startfile(DATA_DIR)                     # noqa: S606  (Windows 专用)

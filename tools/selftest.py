@@ -179,6 +179,81 @@ def t_history():
     return f"聚合 {len(pts)} 点、预测 {pred['hours']:.1f}h / {pred['rate']}%/h、清除通过"
 
 
+def t_endurance():
+    """30 天充放电循环 → 满电最长可用时长（合成数据，用临时库，不碰真实历史）。"""
+    import os
+    import shutil
+    import tempfile
+
+    from app import history
+
+    tmp = tempfile.mkdtemp(prefix="hidbatt-endur-")
+    old_sub, old_db = history.DATA_SUBDIR, history.HISTORY_DB
+    history.DATA_SUBDIR = tmp
+    history.HISTORY_DB = os.path.join(tmp, "history.db")
+    uid = "TEST:ENDURANCE"
+    now = int(time.time())
+    rows = []
+    # (起点电量, 终点电量, 持续小时, 结束于几小时前)
+    plan = [(100, 20, 20, 80), (100, 5, 40, 30), (100, 40, 5, 15), (60, 10, 4, 8)]
+    for start_pct, end_pct, hours, ends_ago in plan:
+        t_end = now - ends_ago * 3600
+        t_start = t_end - hours * 3600
+        steps = max(4, int(hours * 2))
+        for i in range(steps + 1):
+            ts = int(t_start + (t_end - t_start) * i / steps)
+            rows.append((uid, round(start_pct - (start_pct - end_pct) * i / steps), 0, ts))
+        rows.append((uid, start_pct, 1, t_end + 60))       # 结束后插一条充电样本
+    rows.sort(key=lambda r: r[3])
+    try:
+        with history._db() as conn:
+            conn.executemany("INSERT INTO samples(uid, name, percent, charging, ts) "
+                             "VALUES(?,?,?,?,?)",
+                             [(uid, "续航自检", r[1], r[2], r[3]) for r in rows])
+        end = history.endurance(uid, now)
+        assert end["ready"], f"续航估算未就绪：{end}"
+        assert end["cycles"] == 3, f"循环数应为 3（60% 起步那次被忽略），实际 {end['cycles']}"
+        # 最长一次：100%→5% 用 40h，速率 2.375%/h，折算满电 ≈42.1h
+        assert abs(end["hours"] - 42.1) < 1.0, f"最长续航异常：{end['hours']}"
+        assert abs(end["median"] - 25.0) < 1.5, f"中位续航异常：{end['median']}"
+        assert end["start"] == 100 and end["end"] == 5, f"最长循环端点异常：{end}"
+        assert history.endurance("TEST:NODATA", now)["ready"] is False, "空设备不应就绪"
+    finally:
+        history.DATA_SUBDIR, history.HISTORY_DB = old_sub, old_db
+        shutil.rmtree(tmp, ignore_errors=True)
+    return f"3 次循环 · 最长 {end['hours']}h / 中位 {end['median']}h（100%→5%）"
+
+
+def t_data_dir():
+    """数据目录固定在 EXE / 程序目录；不可写时才回退，并在界面标注原因。"""
+    import os
+
+    from app import paths, settings_page
+
+    assert os.path.isdir(paths.DATA_DIR), f"数据目录不存在：{paths.DATA_DIR}"
+    assert (paths.DATA_DIR_NOTE == "") == paths.USING_EXE_DIR, "回退标记与说明不一致"
+    assert paths.HISTORY_DB.startswith(paths.DATA_DIR), "历史库不在数据目录下"
+    assert paths.PLUGIN_DIR.startswith(paths.DATA_DIR), "插件目录不在数据目录下"
+    if paths.USING_EXE_DIR:
+        same = os.path.normcase(os.path.abspath(paths.DATA_DIR)) == \
+            os.path.normcase(os.path.abspath(paths.EXE_DIR))
+        assert same, "USING_EXE_DIR 为真但目录不一致"
+
+    old = (settings_page.DATA_DIR, settings_page.DATA_DIR_NOTE,
+           settings_page.USING_EXE_DIR)
+    try:                                           # 回退分支必须写清原因
+        settings_page.DATA_DIR = os.path.join("X:", "用户目录", "StrelitziaHIDBattery")
+        settings_page.DATA_DIR_NOTE = "EXE 目录不可写，已切换到 X:\\用户目录\\StrelitziaHIDBattery"
+        settings_page.USING_EXE_DIR = False
+        text = settings_page.InterfaceSettingsPage._data_hint_text()
+        assert "已切换" in text, f"回退文案缺少原因：{text}"
+    finally:
+        (settings_page.DATA_DIR, settings_page.DATA_DIR_NOTE,
+         settings_page.USING_EXE_DIR) = old
+    mode = "EXE 目录" if paths.USING_EXE_DIR else "回退 %LOCALAPPDATA%"
+    return f"{mode}：{paths.DATA_DIR}"
+
+
 def t_icon_colors():
     """低电量配色与开机启动读取（不写注册表）。"""
     assert level_color(8) == COLOR_CRIT, "≤15% 应为红色"
@@ -443,6 +518,8 @@ def main() -> int:
                      ("提示词生成", t_prompt),
                      ("图标上传/清除", t_icon_roundtrip),
                      ("电量历史与预测", t_history),
+                     ("30 天满电续航估算", t_endurance),
+                     ("数据目录定位", t_data_dir),
                      ("低电量配色", t_icon_colors),
                      ("产品名一致性", t_branding),
                      ("设备行无 tooltip", t_flyout_tooltips),

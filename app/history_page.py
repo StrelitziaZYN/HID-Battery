@@ -1,5 +1,7 @@
-"""电量统计页：设备选择 + 24 小时 / 7 天 / 30 天图表 + 预测 + 采样间隔 + 清除记录。
+"""电量统计页：设备选择 + 24 小时 / 7 天 / 30 天图表 + 续航估算 + 采样间隔 + 清除记录。
 
+续航估算基于最近 30 天的充放电记录，给两个数：「预计还能用」按近期掉电速度算，
+「满电最长可用」按 30 天内每次充满后放电循环折算取最长。
 图表固定 3:2 宽高比（宽度随窗口变化，高度按比例反推），
 页面放进滚动区，窗口变小时自动出现滚动条而不压缩图表比例。
 """
@@ -32,6 +34,15 @@ def _duration(hours: float) -> str:
     if mm == 0:
         return f"{hh} 小时"
     return f"{hh} 小时 {mm} 分"
+
+
+def _span(hours: float) -> str:
+    """续航估算用：超过 48 小时改用「天 + 小时」，避免一律显示 100 小时以上。"""
+    total = int(round(hours))
+    if total >= 48:
+        days, rest = divmod(total, 24)
+        return f"{days} 天 {rest} 小时" if rest else f"{days} 天"
+    return _duration(hours)
 
 
 class HistoryPage(QWidget):
@@ -148,6 +159,23 @@ class HistoryPage(QWidget):
         self.predict_sub.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
         card_lay.addWidget(self.predict_title)
         card_lay.addWidget(self.predict_sub)
+
+        self.card_sep = QFrame()
+        self.card_sep.setFixedHeight(1)
+        self.card_sep.setStyleSheet("background: rgba(0,0,0,18); border: none;")
+        card_lay.addSpacing(8)
+        card_lay.addWidget(self.card_sep)
+        card_lay.addSpacing(8)
+
+        self.endurance_title = QLabel("—")
+        self.endurance_title.setFont(theme.ui_font(10, QFont.Weight.DemiBold))
+        self.endurance_title.setStyleSheet(f"color: {theme.C.TEXT.name()};")
+        self.endurance_sub = QLabel("")
+        self.endurance_sub.setWordWrap(True)
+        self.endurance_sub.setFont(theme.ui_font(7))
+        self.endurance_sub.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
+        card_lay.addWidget(self.endurance_title)
+        card_lay.addWidget(self.endurance_sub)
         self.body.addWidget(self.card)
         self.body.addSpacing(10)
 
@@ -244,8 +272,9 @@ class HistoryPage(QWidget):
         if info.get("ready"):
             self.predict_title.setText(f"预计还能用 {_duration(info['hours'])}")
             self.predict_sub.setText(
-                f"当前 {info['percent']}% · 近 {info['window_h']} 小时平均掉电 "
-                f"{info['rate']} %/小时 · 基于 {info['samples']} 个放电样本")
+                f"当前 {info['percent']}% · 近 {history.ENDURANCE_DAYS} 天 "
+                f"{info.get('cycles', 1)} 段放电 · 平均掉电 {info['rate']} %/小时 · "
+                f"数据覆盖 {_span(info['window_h'])}")
         else:
             self.predict_title.setText(str(info.get("reason") or "暂无预测"))
             if info.get("percent") is not None:
@@ -253,6 +282,16 @@ class HistoryPage(QWidget):
                     f"当前 {info['percent']}% · 继续积累放电记录后会自动给出估算")
             else:
                 self.predict_sub.setText("需要至少 3 次放电采样，且间隔覆盖半小时以上")
+
+        end = history.endurance(uid, now)
+        if end.get("ready"):
+            self.endurance_title.setText(f"满电最长可用 {_span(end['hours'])}")
+            self.endurance_sub.setText(
+                f"近 {end['days']} 天 {end['cycles']} 次充电循环 · 中位 {_span(end['median'])} · "
+                f"最长一次 {end['start']}%→{end['end']}% 实测 {end['measured_h']:g} 小时")
+        else:
+            self.endurance_title.setText("满电续航：待积累")
+            self.endurance_sub.setText(str(end.get("reason") or ""))
 
     def _show_empty(self, empty: bool) -> None:
         for w in (self.combo, self.seg, self.chart, self.stats, self.card):
