@@ -5,7 +5,7 @@
 
 ## v1.4 · 2026-11-05 · 中英双语界面 + 双语 README + 更名 HID Battery Hub
 
-产品更名为 **HID Battery Hub**，GitHub 仓库同步更名 `StrelitziaZYN/HID-battery-hub`；
+产品更名为 **HID Battery Hub**，GitHub 仓库同步更名 `StrelitziaZYN/HID-Battery-Hub`；
 界面支持中文 / English 即时切换，GitHub 说明拆成中英两份并互相链接。
 
 ### 变更

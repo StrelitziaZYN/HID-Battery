@@ -6,7 +6,7 @@ A tiny Windows tray utility that reads the **battery level** of wireless mice, k
 
 Single portable EXE — unzip and run. No drivers, no administrator rights.
 
-Current version **v1.4** · [Download the latest release](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest)
+Current version **v1.4** · [Download the latest release](https://github.com/StrelitziaZYN/HID-Battery-Hub/releases/latest)
 
 ## Features
 
@@ -40,7 +40,7 @@ Interfaces:
 
 ## Download & run
 
-Grab the latest `win64.zip` from [Releases](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest), unzip it and double-click `HIDBatteryHub.exe`.
+Grab the latest `win64.zip` from [Releases](https://github.com/StrelitziaZYN/HID-Battery-Hub/releases/latest), unzip it and double-click `HIDBatteryHub.exe`.
 On first launch the app creates `config/ protocols/ assets/ data/` next to the EXE, so the EXE alone is enough when you move to another PC.
 To take your settings and history with you, copy the whole folder.
 

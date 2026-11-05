@@ -6,7 +6,7 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 免安装单文件 EXE，解压即用，无需驱动、无需管理员权限。
 
-当前版本 **v1.4** · [下载最新版](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest)
+当前版本 **v1.4** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery-Hub/releases/latest)
 
 ## 功能
 
@@ -40,7 +40,7 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 ## 下载与运行
 
-到 [Releases](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest) 下载最新的 `win64.zip`，
+到 [Releases](https://github.com/StrelitziaZYN/HID-Battery-Hub/releases/latest) 下载最新的 `win64.zip`，
 解压后双击 `HIDBatteryHub.exe`。首次运行会在 EXE 旁边生成 `config/ protocols/ assets/ data/` 四个目录，
 换电脑只拷 EXE 也能跑；想连配置和历史一起带走就整个文件夹拷过去。
 

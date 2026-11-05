@@ -114,8 +114,8 @@ def release_body(assets: list[Path]) -> str:
         size = a.stat().st_size
         size_txt = f"{size / 1048576:.1f} MB" if size > 1048576 else f"{size / 1024:.0f} KB"
         lines.append(f"| `{a.name}` | {size_txt} | `{sha256(a)[:16].upper()}` |")
-    lines += ["", "完整变更见 [CHANGELOG.md](https://github.com/StrelitziaZYN/HID-battery-hub/blob/main/CHANGELOG.md)，"
-              "使用与疑难解答见 [README.md](https://github.com/StrelitziaZYN/HID-battery-hub#readme)。"]
+    lines += ["", "完整变更见 [CHANGELOG.md](https://github.com/StrelitziaZYN/HID-Battery-Hub/blob/main/CHANGELOG.md)，"
+              "使用与疑难解答见 [README.md](https://github.com/StrelitziaZYN/HID-Battery-Hub#readme)。"]
     return "\n".join(lines)
 
 
@@ -131,7 +131,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--token", default=os.environ.get("GITHUB_TOKEN", ""))
     ap.add_argument("--owner", default="StrelitziaZYN")
-    ap.add_argument("--repo", default="HID-battery-hub")
+    ap.add_argument("--repo", default="HID-Battery-Hub")
     ap.add_argument("--tag", default=f"v{VERSION}")
     args = ap.parse_args()
 
