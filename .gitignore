@@ -5,6 +5,9 @@ __pycache__/
 .venv/
 venv/
 
+# 开发期截图（tools/shot.py 输出，正式图在 docs/screenshots/）
+tools/shots/
+
 # 构建产物
 build/
 dist/
