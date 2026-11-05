@@ -3,12 +3,16 @@
 版本号取自 `app/branding.py:VERSION`，同时写入 EXE 的 Windows 版本资源（文件版本 / 产品版本）。
 本文件按「对外可见的行为变化」记录，不逐条罗列内部重构。
 
-## v1.4 · 2026-11-05 · 中英双语界面 + 双语 README
+## v1.4 · 2026-11-05 · 中英双语界面 + 双语 README + 更名 HID Battery Hub
 
+产品更名为 **HID Battery Hub**，GitHub 仓库同步更名 `StrelitziaZYN/HID-battery-hub`；
 界面支持中文 / English 即时切换，GitHub 说明拆成中英两份并互相链接。
 
 ### 变更
 
+- **更名**：产品名 `Strelitzia HID Battery` → **HID Battery Hub**，EXE / 注册表启动项 /
+  数据目录统一改为 `HIDBatteryHub`，接入包 kind 改为 `hid-battery-hub-profile`；
+  旧版注册表启动项与 `%LOCALAPPDATA%` 数据目录自动识别沿用，不需要迁移操作。
 - **语言选项**：通用设置页新增「语言 / Language」一行（中文 / English），选择写入配置
   `config.json:language`，下次启动沿用。
 - **即时生效**：切换后主程序整窗重建——左侧导航、三个设置页、悬浮面板、托盘右键菜单、

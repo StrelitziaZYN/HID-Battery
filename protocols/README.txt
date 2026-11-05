@@ -5,7 +5,7 @@
 
 接入包格式：
 {
-  "kind": "strelitzia-hid-battery-profile",
+  "kind": "hid-battery-hub-profile",
   "version": 1,
   "protocol": { "filename": "vendor_protocol.py", "code_lines": ["from __future__ import annotations", "..."] },
   "profile":  { "id": "vendor-protocol", "name": "厂商 · 协议", "vendor_id": 14391,

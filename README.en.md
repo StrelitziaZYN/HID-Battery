@@ -1,4 +1,4 @@
-# Strelitzia HID Battery
+# HID Battery Hub
 
 **English** | [中文](README.md)
 
@@ -6,7 +6,7 @@ A tiny Windows tray utility that reads the **battery level** of wireless mice, k
 
 Single portable EXE — unzip and run. No drivers, no administrator rights.
 
-Current version **v1.4** · [Download the latest release](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
+Current version **v1.4** · [Download the latest release](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest)
 
 ## Features
 
@@ -40,7 +40,7 @@ Interfaces:
 
 ## Download & run
 
-Grab the latest `win64.zip` from [Releases](https://github.com/StrelitziaZYN/HID-Battery/releases/latest), unzip it and double-click `StrelitziaHIDBattery.exe`.
+Grab the latest `win64.zip` from [Releases](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest), unzip it and double-click `HIDBatteryHub.exe`.
 On first launch the app creates `config/ protocols/ assets/ data/` next to the EXE, so the EXE alone is enough when you move to another PC.
 To take your settings and history with you, copy the whole folder.
 
@@ -73,7 +73,7 @@ It needs one complete **full charge → drain below 20%** cycle, and the cycle m
 
 **Where is my data stored?**
 By default right next to the EXE: `config/` (profiles), `protocols/` (plugins), `assets/icons/` (device icons), `data/history.db` (battery history). The bottom of the Interfaces page shows the real paths and has an **Open Data Folder** button.
-Only when the EXE sits in a non-writable folder (for example `C:\Program Files`) does everything move to `%LOCALAPPDATA%\StrelitziaHIDBattery`, and the UI says so explicitly.
+Only when the EXE sits in a non-writable folder (for example `C:\Program Files`) does everything move to `%LOCALAPPDATA%\HIDBatteryHub`, and the UI says so explicitly.
 
 **How do I turn off auto-start?**
 Use *General → Start with Windows*, or the **Launch at Startup** item in the tray context menu — the two stay in sync. It writes to the current user's `HKCU\...\Run` key, so no admin rights are needed.

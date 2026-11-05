@@ -1,20 +1,20 @@
 """产品名称与版本：所有界面、托盘、打包脚本都从这里取，改名只改一处。"""
 from __future__ import annotations
 
-APP_NAME = "Strelitzia HID Battery"
-APP_SHORT = "Strelitzia"
+APP_NAME = "HID Battery Hub"
+APP_SHORT = "HIDBatteryHub"
 TAGLINE = "2.4G 设备电量监测"
 VERSION = "1.4"
 
 # EXE / 图标 / 注册表项统一用无空格标识
-EXE_STEM = "StrelitziaHIDBattery"
-REG_KEY_VALUE = "StrelitziaHIDBattery"
+EXE_STEM = "HIDBatteryHub"
+REG_KEY_VALUE = "HIDBatteryHub"
 
 # 数据目录名（EXE 同目录可写时直接用 EXE 目录，否则退回 %LOCALAPPDATA%\<这个>）
-DATA_FOLDER = "StrelitziaHIDBattery"
+DATA_FOLDER = "HIDBatteryHub"
 
 # 接入包（AI 产出的 JSON）标识
-BUNDLE_KIND = "strelitzia-hid-battery-profile"
+BUNDLE_KIND = "hid-battery-hub-profile"
 
 
 def window_title(suffix: str = "") -> str:

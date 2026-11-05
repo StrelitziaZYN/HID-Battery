@@ -2,7 +2,7 @@
 
 用法：
     set GITHUB_TOKEN=ghp_xxx && python tools/push_github.py
-    python tools/push_github.py --token ghp_xxx            # 默认推 StrelitziaZYN/HID-Battery
+    python tools/push_github.py --token ghp_xxx            # 默认推 StrelitziaZYN/HID-battery-hub
 
 做的事：
     1. GET  /user                    确认 token 身份
@@ -54,7 +54,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--token", default=os.environ.get("GITHUB_TOKEN", ""))
     ap.add_argument("--owner", default="StrelitziaZYN")
-    ap.add_argument("--repo", default="HID-Battery")
+    ap.add_argument("--repo", default="HID-battery-hub")
     ap.add_argument("--private", default="1")
     args = ap.parse_args()
 

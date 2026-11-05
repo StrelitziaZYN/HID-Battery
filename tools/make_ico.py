@@ -71,5 +71,5 @@ def make_icon(path: str, sizes=SIZES) -> str:
 
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else os.path.join("build", "StrelitziaHIDBattery.ico")
+    target = sys.argv[1] if len(sys.argv) > 1 else os.path.join("build", "HIDBatteryHub.ico")
     print("icon ->", make_icon(target), os.path.getsize(target), "bytes")

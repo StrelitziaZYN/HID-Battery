@@ -3,14 +3,14 @@
 PyInstaller 单文件模式会把代码解到临时目录（sys._MEIPASS，退出即删），
 配置、图标、插件、历史库不能放那里，必须落在 **EXE 旁边**：
 
-    StrelitziaHIDBattery.exe
+    HIDBatteryHub.exe
     config/profiles.json     接口配置
     protocols/*.py           AI/手工加进来的协议插件（启动时自动加载）
     assets/icons/            用户上传的设备图标
     data/history.db          电量历史
 
 若 EXE 被放到 Program Files 这类不可写目录，则整棵目录退回到
-%LOCALAPPDATA%\\StrelitziaHIDBattery（`USING_EXE_DIR` 为 False，界面会标注原因）。
+%LOCALAPPDATA%\\HIDBatteryHub（`USING_EXE_DIR` 为 False，界面会标注原因）。
 """
 from __future__ import annotations
 
@@ -40,12 +40,13 @@ def _writable(path: str) -> bool:
 
 
 def _fallback_dir() -> str:
-    """EXE 目录不可写时的备用目录；兼容旧版留下的 HIDBattery 文件夹。"""
+    """EXE 目录不可写时的备用目录；兼容旧版留下的数据目录（StrelitziaHIDBattery / HIDBattery）。"""
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     new = os.path.join(base, branding.DATA_FOLDER)
-    old = os.path.join(base, "HIDBattery")
-    if not os.path.isdir(new) and os.path.isdir(old):
-        return old
+    olds = [os.path.join(base, name) for name in ("StrelitziaHIDBattery", "HIDBattery")]
+    for old in olds:
+        if not os.path.isdir(new) and os.path.isdir(old):
+            return old
     return new
 
 
@@ -72,7 +73,7 @@ _README = """\
 
 接入包格式：
 {
-  "kind": "strelitzia-hid-battery-profile",
+  "kind": "hid-battery-hub-profile",
   "version": 1,
   "protocol": { "filename": "vendor_protocol.py", "code_lines": ["from __future__ import annotations", "..."] },
   "profile":  { "id": "vendor-protocol", "name": "厂商 · 协议", "vendor_id": 14391,

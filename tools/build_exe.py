@@ -3,7 +3,7 @@
 用法：
     python tools/build_exe.py
 
-产物：dist/StrelitziaHIDBattery.exe —— 双击即用。运行期目录（都在 EXE 旁边）：
+产物：dist/HIDBatteryHub.exe —— 双击即用。运行期目录（都在 EXE 旁边）：
 
     config/profiles.json     接口配置
     protocols/               AI 接入包装好的用户插件（自动加载）
@@ -72,7 +72,7 @@ def write_version_file(path: str) -> str:
         stem=branding.EXE_STEM,
         desc=f"{branding.APP_NAME} · {branding.TAGLINE}",
         company=branding.APP_NAME,
-        copyright="Copyright (c) 2026 Strelitzia",
+        copyright="Copyright (c) 2026 StrelitziaZYN",
     )
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)

@@ -1,4 +1,4 @@
-"""Strelitzia HID Battery —— 2.4G 设备电量监测（程序入口）。"""
+"""HID Battery Hub —— 2.4G 设备电量监测（程序入口）。"""
 from __future__ import annotations
 
 import copy

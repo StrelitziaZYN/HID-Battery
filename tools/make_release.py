@@ -1,6 +1,6 @@
 """把当前工作区整理成一份可归档、可分发的产物包。
 
-产物结构（release/StrelitziaHIDBattery_v<版本>_<日期>/）：
+产物结构（release/HIDBatteryHub_v<版本>_<日期>/）：
 
     src/         源码（main.py、app/、tools/、requirements.txt、启动.bat）
     docs/        README、CHANGELOG、归档说明

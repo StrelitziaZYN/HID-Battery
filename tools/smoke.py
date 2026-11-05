@@ -99,7 +99,7 @@ def step2():
     text = dlg.text.toPlainText()
     print("prompt dialog: devices =", dlg.combo.count(),
           "| lines =", len(text.splitlines()),
-          "| bundle 格式:", "strelitzia-hid-battery-profile" in text,
+          "| bundle 格式:", "hid-battery-hub-profile" in text,
           "| code_lines:", "code_lines" in text)
     dlg.grab().save(os.path.join(OUT, "live_prompt.png"))
     dlg.close()
@@ -173,7 +173,7 @@ def step2():
     plugin_file = os.path.join(plugin_store.PLUGIN_DIR, "smoke_bundle.py")
     try:
         bundle = {
-            "kind": "strelitzia-hid-battery-profile",
+            "kind": "hid-battery-hub-profile",
             "version": 1,
             "protocol": {"filename": "smoke_bundle.py", "code_lines": [
                 "from __future__ import annotations",

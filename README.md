@@ -1,4 +1,4 @@
-# Strelitzia HID Battery
+# HID Battery Hub
 
 **中文** | [English](README.en.md)
 
@@ -6,7 +6,7 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 免安装单文件 EXE，解压即用，无需驱动、无需管理员权限。
 
-当前版本 **v1.4** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
+当前版本 **v1.4** · [下载最新版](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest)
 
 ## 功能
 
@@ -40,8 +40,8 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 ## 下载与运行
 
-到 [Releases](https://github.com/StrelitziaZYN/HID-Battery/releases/latest) 下载最新的 `win64.zip`，
-解压后双击 `StrelitziaHIDBattery.exe`。首次运行会在 EXE 旁边生成 `config/ protocols/ assets/ data/` 四个目录，
+到 [Releases](https://github.com/StrelitziaZYN/HID-battery-hub/releases/latest) 下载最新的 `win64.zip`，
+解压后双击 `HIDBatteryHub.exe`。首次运行会在 EXE 旁边生成 `config/ protocols/ assets/ data/` 四个目录，
 换电脑只拷 EXE 也能跑；想连配置和历史一起带走就整个文件夹拷过去。
 
 ## 界面语言
@@ -80,7 +80,7 @@ Windows 默认把新图标折叠进任务栏的 `^` 里。点开 `^`，把电池
 **数据存在哪？**
 默认就是 **EXE 所在目录**：`config/`（接口配置）、`protocols/`（插件）、`assets/icons/`（设备图标）、
 `data/history.db`（电量历史）。接口设置页底部会显示实际路径，点「打开数据目录」直达。
-只有 EXE 放在不可写目录（如 `C:\Program Files`）时，才会整棵切到 `%LOCALAPPDATA%\StrelitziaHIDBattery`，
+只有 EXE 放在不可写目录（如 `C:\Program Files`）时，才会整棵切到 `%LOCALAPPDATA%\HIDBatteryHub`，
 界面上会标注「已切换」及原因。
 
 **开机自启在哪关？**

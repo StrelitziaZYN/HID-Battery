@@ -242,8 +242,8 @@ def t_data_dir():
     old = (settings_page.DATA_DIR, settings_page.DATA_DIR_NOTE,
            settings_page.USING_EXE_DIR)
     try:                                           # 回退分支必须写清原因
-        settings_page.DATA_DIR = os.path.join("X:", "用户目录", "StrelitziaHIDBattery")
-        settings_page.DATA_DIR_NOTE = "EXE 目录不可写，已切换到 X:\\用户目录\\StrelitziaHIDBattery"
+        settings_page.DATA_DIR = os.path.join("X:", "用户目录", "HIDBatteryHub")
+        settings_page.DATA_DIR_NOTE = "EXE 目录不可写，已切换到 X:\\用户目录\\HIDBatteryHub"
         settings_page.USING_EXE_DIR = False
         text = settings_page.InterfaceSettingsPage._data_hint_text()
         assert "已切换" in text, f"回退文案缺少原因：{text}"
@@ -270,7 +270,7 @@ def t_branding():
     """产品名单一来源：界面/托盘/打包都取同一个常量。"""
     from app import profiles
 
-    assert branding.APP_NAME == "Strelitzia HID Battery", branding.APP_NAME
+    assert branding.APP_NAME == "HID Battery Hub", branding.APP_NAME
     assert branding.EXE_STEM.isalnum(), "EXE 名不应含空格等特殊字符"
     assert branding.EXE_STEM in branding.REG_KEY_VALUE
     assert profiles.PROFILE_PATH.endswith("profiles.json")

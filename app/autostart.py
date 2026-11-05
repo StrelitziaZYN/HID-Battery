@@ -13,7 +13,7 @@ except ImportError:                                # pragma: no cover - 非 Wind
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = branding.REG_KEY_VALUE
-LEGACY_VALUE = "HIDBattery"                        # 旧版写入的项，切换时顺手清掉
+LEGACY_VALUES = ("StrelitziaHIDBattery", "HIDBattery")   # 旧版写入的项，切换时顺手清掉
 
 
 def command() -> str:
@@ -28,12 +28,12 @@ def command() -> str:
 
 
 def current() -> str:
-    """注册表里当前的启动命令，没有则空串（兼容旧版 HIDBattery 项）。"""
+    """注册表里当前的启动命令，没有则空串（兼容旧版留下的启动项）。"""
     if winreg is None:
         return ""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            for name in (VALUE_NAME, LEGACY_VALUE):
+            for name in (VALUE_NAME, *LEGACY_VALUES):
                 try:
                     value, _ = winreg.QueryValueEx(key, name)
                     return str(value)
@@ -57,12 +57,13 @@ def set_enabled(enabled: bool) -> bool:
                             winreg.KEY_SET_VALUE) as key:
             if enabled:
                 winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, command())
-                try:                                # 清理旧版同名项，避免开机起两个
-                    winreg.DeleteValue(key, LEGACY_VALUE)
-                except FileNotFoundError:
-                    pass
+                for name in LEGACY_VALUES:      # 清理旧版同名项，避免开机起两个
+                    try:
+                        winreg.DeleteValue(key, name)
+                    except FileNotFoundError:
+                        pass
             else:
-                for name in (VALUE_NAME, LEGACY_VALUE):
+                for name in (VALUE_NAME, *LEGACY_VALUES):
                     try:
                         winreg.DeleteValue(key, name)
                     except FileNotFoundError:
