@@ -26,8 +26,25 @@ class C:
 
     TRACK = QColor(0, 0, 0, 26)
 
-    RADIUS = 10
+    # 卡片 / 分组（Fluent 2 的「层」：窗口灰 → 卡片白 → 分组更浅）
+    CARD = QColor(255, 255, 255, 242)
+    CARD_STROKE = QColor(0, 0, 0, 16)
+    CARD_SHADOW = QColor(0, 0, 0, 34)
+    GROUP = QColor(0, 0, 0, 5)
+    GROUP_STROKE = QColor(0, 0, 0, 10)
+    ROW_HOVER = QColor(0, 0, 0, 5)
+
+    RADIUS = 8
     RADIUS_SMALL = 6
+
+    # 模块标识色：只用在图标瓦片 / 强调条上，正文仍走中性色，避免花
+    MODULE = {
+        "blue": QColor(0, 103, 192),
+        "teal": QColor(3, 131, 135),
+        "violet": QColor(113, 87, 182),
+        "amber": QColor(157, 93, 0),
+        "slate": QColor(90, 96, 106),
+    }
 
 
 _UI_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei"]
@@ -100,7 +117,17 @@ ICON = {
     "chart": "\uE9D2",
     "history": "\uE81C",
     "pin": "\uE718",
+    "terminal": "\uE756",
+    "copy": "\uE8C8",
+    "folder": "\uE838",
 }
+
+
+def tint(color: QColor, alpha: int) -> QColor:
+    """同色不同透明度（用于瓦片底、胶囊底、悬停态）。"""
+    c = QColor(color)
+    c.setAlpha(max(0, min(255, alpha)))
+    return c
 
 
 def apply_shadow_color(widget: QWidget, color: QColor) -> None:

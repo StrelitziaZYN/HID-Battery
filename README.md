@@ -4,7 +4,7 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 
 免安装单文件 EXE，解压即用，无需驱动、无需管理员权限。
 
-当前版本 **v1.2** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
+当前版本 **v1.3** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
 
 ## 功能
 

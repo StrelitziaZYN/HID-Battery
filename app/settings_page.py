@@ -15,7 +15,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPixmap
 from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFrame,
                                QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QLineEdit,
-                               QPlainTextEdit, QScrollArea, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QScrollArea, QSizePolicy, QVBoxLayout,
+                               QWidget)
 
 from . import autostart, icon_store, plugin_store, theme
 from .paths import (CONFIG_DIR, DATA_DIR, DATA_DIR_NOTE, EXE_DIR, IS_FROZEN,
@@ -23,7 +24,8 @@ from .paths import (CONFIG_DIR, DATA_DIR, DATA_DIR_NOTE, EXE_DIR, IS_FROZEN,
 from .probe_page import ProbePanel
 from .profiles import default_config, new_profile, save_config
 from .protocols import all_protocols, get_protocol
-from .widgets import ElidedLabel, FlatButton, IconButton, Surface, ToggleSwitch
+from .widgets import (Badge, Banner, ElidedLabel, FlatButton, IconButton, IconTile,
+                      ListRow, Surface, ToggleSwitch)
 
 INPUT_QSS = theme.INPUT_QSS
 
@@ -35,44 +37,86 @@ class SectionLabel(QLabel):
         self.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 4px 2px 2px 2px;")
 
 
-class SectionCard(Surface):
-    """一个区域卡片：图标 + 标题 + 一句话说明，下面挂内容。"""
+class SectionCard(QWidget):
+    """一个模块卡片：标识瓦片 + 标题 + 一句话说明 + 右上状态位，内容挂在 body 上。
 
-    def __init__(self, title: str, glyph: str, subtitle: str = "", parent=None):
-        super().__init__(parent, radius=10, fill=theme.C.SURFACE, border=theme.C.STROKE)
+    视觉规则（Fluent 2）：
+    - 卡片白底 + 1px 描边（带一点模块主题色）+ 底部 3px 就地绘制的投影（不用
+      QGraphicsDropShadowEffect，避免离屏渲染把子控件的绘制状态弄脏）；
+    - 模块之间靠 14px 间距、各自的标识色和标题层级区分；
+    - 卡片内的列表项再包一层白底细边圆角行，形成「窗口 → 卡片 → 行」三层。
+    """
+
+    SHADOW = 3                                     # 底部投影高度，需要从内边距里预留
+
+    def __init__(self, title: str, glyph: str, subtitle: str = "", tone: str = "blue",
+                 parent=None):
+        super().__init__(parent)
+        self._tone = theme.C.MODULE.get(tone, theme.C.ACCENT)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 12, 16, 14)
-        outer.setSpacing(8)
+        outer.setContentsMargins(16, 14, 16, 12 + self.SHADOW)
+        outer.setSpacing(9)
 
         head = QHBoxLayout()
         head.setContentsMargins(0, 0, 0, 0)
-        head.setSpacing(9)
-        icon = theme.icon_label(theme.ICON.get(glyph, glyph), size=12, color=theme.C.ACCENT)
-        head.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+        head.setSpacing(11)
+        head.addWidget(IconTile(glyph, self._tone, size=32), 0, Qt.AlignmentFlag.AlignTop)
 
         col = QVBoxLayout()
-        col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(1)
+        col.setContentsMargins(0, 1, 0, 0)
+        col.setSpacing(2)
         name = QLabel(title)
-        name.setFont(theme.ui_font(10, QFont.Weight.DemiBold))
-        name.setStyleSheet(f"color: {theme.C.TEXT.name()};")
+        name.setFont(theme.ui_font(11, QFont.Weight.DemiBold))
+        name.setStyleSheet(f"color: {theme.C.TEXT.name()}; background: transparent;")
+        name.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         col.addWidget(name)
         if subtitle:
             tip = QLabel(subtitle)
             tip.setFont(theme.ui_font(7))
             tip.setWordWrap(True)
-            tip.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
+            tip.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; background: transparent;")
+            tip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             col.addWidget(tip)
         head.addLayout(col, 1)
+
+        self._head_right = QHBoxLayout()
+        self._head_right.setContentsMargins(0, 2, 0, 0)
+        self._head_right.setSpacing(6)
+        head.addLayout(self._head_right, 0)
         outer.addLayout(head)
 
         self.body = QVBoxLayout()
         self.body.setContentsMargins(0, 2, 0, 0)
-        self.body.setSpacing(2)
+        self.body.setSpacing(6)
         outer.addLayout(self.body)
 
+    def header_widget(self, widget: QWidget) -> QWidget:
+        """把状态胶囊之类的控件放到卡片标题右侧。"""
+        self._head_right.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        return widget
 
-class ProfileRow(QWidget):
+    def paintEvent(self, event):                   # noqa: N802
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QPainter, QPen
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        body = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5 - self.SHADOW)
+
+        p.setPen(Qt.PenStyle.NoPen)                # 三层极淡投影，越靠下越实
+        for dy, alpha in ((3, 9), (2, 13), (1, 17)):
+            p.setBrush(QColor(0, 0, 0, alpha))
+            p.drawRoundedRect(body.translated(0, dy), 10, 10)
+
+        p.setPen(QPen(theme.tint(self._tone, 62), 1))
+        p.setBrush(theme.C.CARD)
+        p.drawRoundedRect(body, 10, 10)
+
+
+class ProfileRow(ListRow):
+    """一套接口配置：名称 + 插件/VID + 开关 + 编辑/删除。"""
+
     edited = Signal(str)
     toggled = Signal(str, bool)
     removed = Signal(str)
@@ -80,51 +124,54 @@ class ProfileRow(QWidget):
     def __init__(self, profile: dict, parent=None):
         super().__init__(parent)
         self.profile = profile
-        self.setFixedHeight(52)
+        self.setFixedHeight(56)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 4, 6, 4)
-        lay.setSpacing(8)
+        lay.setContentsMargins(12, 6, 8, 6)
+        lay.setSpacing(10)
 
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(1)
-        name = ElidedLabel(profile.get("name", "未命名接口"))
-        name.setFont(theme.ui_font(9, QFont.Weight.DemiBold))
-        name.setStyleSheet(f"color: {theme.C.TEXT.name()};")
+        col.setSpacing(2)
+        self.name = ElidedLabel(profile.get("name", "未命名接口"))
+        self.name.setFont(theme.ui_font(9, QFont.Weight.DemiBold))
         vid = profile.get("vendor_id", 0)
         proto = get_protocol(str(profile.get("protocol", "")))
         label = f"插件 {proto.id}" if proto else f"{profile.get('protocol', '?')}（未注册）"
-        summary = ElidedLabel(f"VID {int(vid):#06x} · {label}")
-        summary.setFont(theme.ui_font(7))
-        summary.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
-        col.addWidget(name)
-        col.addWidget(summary)
+        self.summary = ElidedLabel(f"VID {int(vid):#06x} · {label}")
+        self.summary.setFont(theme.ui_font(7))
+        col.addWidget(self.name)
+        col.addWidget(self.summary)
         lay.addLayout(col, 1)
 
         self.toggle = ToggleSwitch(profile.get("enabled", True))
-        self.toggle.toggled.connect(lambda v: self.toggled.emit(profile.get("id", ""), v))
-        lay.addWidget(self.toggle)
+        self.toggle.toggled.connect(self._on_toggle)
+        lay.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        btn_edit = IconButton(theme.ICON["edit"], size=26, icon_size=8, tooltip="编辑")
+        btn_edit = IconButton(theme.ICON["edit"], size=28, icon_size=8, tooltip="编辑")
         btn_edit.clicked.connect(lambda: self.edited.emit(profile.get("id", "")))
         lay.addWidget(btn_edit)
 
-        btn_del = IconButton(theme.ICON["delete"], size=26, icon_size=8, tooltip="删除")
+        btn_del = IconButton(theme.ICON["delete"], size=28, icon_size=8, tooltip="删除")
         btn_del.clicked.connect(lambda: self.removed.emit(profile.get("id", "")))
         lay.addWidget(btn_del)
 
-    def paintEvent(self, event):                   # noqa: N802
-        from PySide6.QtCore import QRectF
-        from PySide6.QtGui import QPainter
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(0, 0, 0, 8))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0, 2, 0, -2), 7, 7)
+        self._apply_state()
+
+    def _on_toggle(self, checked: bool):
+        self.profile["enabled"] = bool(checked)
+        self._apply_state()
+        self.toggled.emit(self.profile.get("id", ""), bool(checked))
+
+    def _apply_state(self):
+        """停用的接口整行压暗：一眼看出哪些接口在参与读取。"""
+        on = bool(self.profile.get("enabled", True))
+        self.set_dimmed(not on)
+        self.name.setStyleSheet(f"color: {(theme.C.TEXT if on else theme.C.TEXT_SECONDARY).name()};")
+        self.summary.setStyleSheet(f"color: rgba(138, 138, 138, {255 if on else 150});")
 
 
-class IconRow(QWidget):
+class IconRow(ListRow):
     """一个设备的图标行：预览 + 名称 + 上传 / 清除。图标全部由用户自己提供。"""
 
     upload_requested = Signal(str)
@@ -135,21 +182,21 @@ class IconRow(QWidget):
         self.device = device
         self.icon_key = device.get("icon_key") or icon_store.key_of(
             device.get("vendor_id", 0), device.get("product_id", 0))
-        self.setFixedHeight(48)
+        self.setFixedHeight(52)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 4, 4, 4)
-        lay.setSpacing(8)
+        lay.setContentsMargins(10, 4, 6, 4)
+        lay.setSpacing(10)
 
         self.preview = QLabel()
-        self.preview.setFixedSize(32, 32)
+        self.preview.setFixedSize(34, 34)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._apply_preview(device.get("icon_path"))
         lay.addWidget(self.preview)
 
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(1)
+        col.setSpacing(2)
         name = ElidedLabel(device.get("name") or "未知设备")
         name.setFont(theme.ui_font(9, QFont.Weight.DemiBold))
         name.setStyleSheet(f"color: {theme.C.TEXT.name()};")
@@ -163,12 +210,12 @@ class IconRow(QWidget):
         col.addWidget(sub)
         lay.addLayout(col, 1)
 
-        btn_up = IconButton(theme.ICON["upload"], size=26, icon_size=8, tooltip="上传图标")
+        btn_up = IconButton(theme.ICON["upload"], size=28, icon_size=8, tooltip="上传图标")
         btn_up.clicked.connect(lambda *_: self.upload_requested.emit(self.icon_key))
         lay.addWidget(btn_up)
 
         if device.get("icon_path"):
-            btn_clear = IconButton(theme.ICON["delete"], size=26, icon_size=8, tooltip="清除图标")
+            btn_clear = IconButton(theme.ICON["delete"], size=28, icon_size=8, tooltip="清除图标")
             btn_clear.clicked.connect(lambda *_: self.clear_requested.emit(self.icon_key))
             lay.addWidget(btn_clear)
 
@@ -178,22 +225,24 @@ class IconRow(QWidget):
             if not raw.isNull():
                 self.preview.setPixmap(raw.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio,
                                                   Qt.TransformationMode.SmoothTransformation))
-                self.preview.setStyleSheet("background: transparent;")
+                self.preview.setStyleSheet(
+                    "background: rgba(0,0,0,6); border-radius: 8px;")
                 return
         self.preview.setText("—")
         self.preview.setFont(theme.ui_font(9))
         self.preview.setStyleSheet(
-            f"color: {theme.C.TEXT_TERTIARY.name()}; background: rgba(0,0,0,8);"
-            "border: 1px dashed rgba(0,0,0,45); border-radius: 7px;")
+            f"color: {theme.C.TEXT_TERTIARY.name()}; background: rgba(0,0,0,6);"
+            "border: 1px dashed rgba(0,0,0,42); border-radius: 8px;")
 
 
 class SettingsPageBase(QWidget):
-    """设置类页面的公共外壳：标题 + 滚动区 + 内容 body。"""
+    """设置类页面的公共外壳：标题 + 副标题 + 滚动区 + 内容 body。"""
 
     back_requested = Signal()
     config_changed = Signal()
 
-    def __init__(self, config: dict, title: str, embedded: bool = False, parent=None):
+    def __init__(self, config: dict, title: str, embedded: bool = False, parent=None,
+                 subtitle: str = ""):
         super().__init__(parent)
         self.config = config
         self.embedded = embedded
@@ -205,19 +254,34 @@ class SettingsPageBase(QWidget):
 
         head = QHBoxLayout()
         head.setContentsMargins(0, 0, 0, 0)
-        head.setSpacing(4)
+        head.setSpacing(6)
         self.btn_back = IconButton(theme.ICON["back"], size=28, icon_size=9, tooltip="返回")
         self.btn_back.clicked.connect(lambda *_: self.back_requested.emit())
-        head.addWidget(self.btn_back)
+        head.addWidget(self.btn_back, 0, Qt.AlignmentFlag.AlignTop)
         if embedded:
             self.btn_back.hide()
+
+        title_col = QVBoxLayout()
+        title_col.setContentsMargins(0, 0, 0, 0)
+        title_col.setSpacing(2)
         lb = QLabel(title)
         lb.setFont(theme.ui_font(13, QFont.Weight.DemiBold))
-        lb.setStyleSheet(f"color: {theme.C.TEXT.name()};")
-        head.addWidget(lb)
-        head.addStretch(1)
+        lb.setStyleSheet(f"color: {theme.C.TEXT.name()}; background: transparent;")
+        title_col.addWidget(lb)
+        if subtitle:
+            sb = QLabel(subtitle)
+            sb.setFont(theme.ui_font(7))
+            sb.setWordWrap(True)
+            sb.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; background: transparent;")
+            title_col.addWidget(sb)
+        head.addLayout(title_col, 1)
+
+        self.head_right = QHBoxLayout()
+        self.head_right.setContentsMargins(0, 4, 0, 0)
+        self.head_right.setSpacing(8)
+        head.addLayout(self.head_right, 0)
         root.addLayout(head)
-        root.addSpacing(10)
+        root.addSpacing(14)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -230,8 +294,8 @@ class SettingsPageBase(QWidget):
         self.host = QWidget()
         self.host.setStyleSheet("background: transparent;")
         self.body = QVBoxLayout(self.host)
-        self.body.setContentsMargins(0, 0, 10, 0)
-        self.body.setSpacing(12)
+        self.body.setContentsMargins(0, 0, 10, 8)
+        self.body.setSpacing(14)
         self.scroll.setWidget(self.host)
         root.addWidget(self.scroll, 1)
 
@@ -291,9 +355,10 @@ class GeneralSettingsPage(SettingsPageBase):
     """区域一：通用设置（刷新间隔 / 开机自启 / 恢复默认）。"""
 
     def __init__(self, config: dict, embedded: bool = False, parent=None):
-        super().__init__(config, "通用设置", embedded, parent)
+        super().__init__(config, "通用设置", embedded, parent,
+                         subtitle="刷新节奏、开机行为与恢复出厂")
 
-        card = SectionCard("通用设置", "settings", "设备清单的刷新节奏与开机行为")
+        card = SectionCard("刷新与启动", "settings", "设备清单的刷新节奏与开机行为", tone="slate")
 
         self.interval = QComboBox()
         self.interval.setStyleSheet(INPUT_QSS)
@@ -352,7 +417,11 @@ class GeneralSettingsPage(SettingsPageBase):
 
 
 class InterfaceSettingsPage(SettingsPageBase):
-    """区域三：接口设置（协议插件 / AI 接入包 / 设备图标 / 接口调试）。"""
+    """接口设置：四个模块各占一张卡片——接口设置 / 设备接入 / 设备图标 / 接口调试。
+
+    每张卡片用「标识瓦片 + 标题层级 + 主题色描边」区分模块，卡片间距 14px；
+    卡片内部再用品胶囊、步骤面板、列表行形成第二层结构，避免内容糊成一片。
+    """
 
     prompt_requested = Signal()
     icons_changed = Signal()
@@ -361,27 +430,58 @@ class InterfaceSettingsPage(SettingsPageBase):
                  devices_provider: Optional[Callable[[], List[dict]]] = None,
                  embedded: bool = True, parent=None):
         self._devices_provider = devices_provider or (lambda: [])
-        super().__init__(config, "接口设置", embedded, parent)
+        super().__init__(config, "接口设置", embedded, parent,
+                         subtitle="协议插件决定怎么读电量，接入包让新设备一次装好，图标与调试也在本页完成")
 
-        iface = SectionCard("接口设置", "device", "协议插件、设备接入、图标与调试")
+        self.summary = Badge("—", "neutral")
+        self.head_right.addWidget(self.summary, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        iface.body.addWidget(SectionLabel("协议插件（厂商接口）"))
+        # ---------------- 模块一：接口设置 ---------------- #
+        iface = SectionCard("接口设置", "link", "每套接口 = 一个厂商协议 + 一组参数，可同时启用多个",
+                            tone="blue")
+        self.iface_badge = iface.header_widget(Badge("—", "accent"))
+
         self.profile_box = QVBoxLayout()
-        self.profile_box.setSpacing(2)
+        self.profile_box.setContentsMargins(0, 0, 0, 0)
+        self.profile_box.setSpacing(4)
         iface.body.addLayout(self.profile_box)
 
+        self.profile_empty = QLabel("还没有接口配置：点下面的「新增接口」，或到「设备接入」导入一个接入包")
+        self.profile_empty.setWordWrap(True)
+        self.profile_empty.setFont(theme.ui_font(7))
+        self.profile_empty.setStyleSheet(
+            f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 12px 2px;")
+        self.profile_empty.hide()
+        iface.body.addWidget(self.profile_empty)
+
+        self.profile_divider = self._divider()
+        iface.body.addWidget(self.profile_divider)
+
         add_row = QHBoxLayout()
-        add_row.setContentsMargins(0, 4, 0, 2)
+        add_row.setContentsMargins(0, 2, 0, 0)
+        add_row.setSpacing(8)
         self.btn_add = FlatButton("新增接口", glyph=theme.ICON["add"])
         self.btn_add.clicked.connect(lambda *_: self._add_profile())
-        add_row.addWidget(self.btn_add)
+        add_row.addWidget(self.btn_add, 0, Qt.AlignmentFlag.AlignVCenter)
         add_row.addStretch(1)
+        add_hint = QLabel("关掉开关的接口不参与读取，配置仍会保留")
+        add_hint.setFont(theme.ui_font(7))
+        add_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
+        add_row.addWidget(add_hint, 0, Qt.AlignmentFlag.AlignVCenter)
         iface.body.addLayout(add_row)
 
-        iface.body.addWidget(SectionLabel("设备接入（AI 接入包）"))
+        # ---------------- 模块二：设备接入 ---------------- #
+        acc = SectionCard("设备接入", "device", "给还没适配的设备生成接入包，插件代码由 AI 写",
+                          tone="teal")
+        acc.body.addWidget(self._steps_panel([
+            ("检测设备", "点「检测设备并生成提示词」，工具会读出这台设备的接口集合与读取要点"),
+            ("交给 AI", "把提示词粘给任意大模型，它会返回一个 .json 接入包"),
+            ("导入接入包", "插件与接口配置自动装好，无需手动改文件"),
+        ], theme.C.MODULE["teal"]))
+
         newdev = QHBoxLayout()
-        newdev.setContentsMargins(0, 0, 0, 2)
-        newdev.setSpacing(6)
+        newdev.setContentsMargins(0, 2, 0, 0)
+        newdev.setSpacing(8)
         self.btn_new = FlatButton("检测设备并生成提示词", glyph=theme.ICON["device"], primary=True)
         self.btn_new.clicked.connect(lambda *_: self.prompt_requested.emit())
         self.btn_import = FlatButton("导入接入包", glyph=theme.ICON["upload"])
@@ -389,61 +489,97 @@ class InterfaceSettingsPage(SettingsPageBase):
         newdev.addWidget(self.btn_new)
         newdev.addWidget(self.btn_import)
         newdev.addStretch(1)
-        iface.body.addLayout(newdev)
+        acc.body.addLayout(newdev)
 
-        newdev_hint = QLabel("① 点「检测设备并生成提示词」，把提示词交给 AI；"
-                             "② AI 会给出一个 .json 接入包；③ 点「导入接入包」选中它 —— "
-                             "插件与接口配置会自动装好，无需手动改文件。")
-        newdev_hint.setWordWrap(True)
-        newdev_hint.setFont(theme.ui_font(7))
-        newdev_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 4px 2px;")
-        iface.body.addWidget(newdev_hint)
+        self.import_banner = Banner(tone="ok")
+        self.import_hint = self.import_banner.label
+        self.import_banner.hide()
+        acc.body.addWidget(self.import_banner)
 
-        self.import_hint = QLabel("")
-        self.import_hint.setWordWrap(True)
-        self.import_hint.setFont(theme.ui_font(7))
-        self.import_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 4px 2px;")
-        self.import_hint.hide()
-        iface.body.addWidget(self.import_hint)
+        # ---------------- 模块三：设备图标 ---------------- #
+        icons = SectionCard("设备图标", "image", "图标由你自己上传，主面板与托盘都会用它",
+                            tone="violet")
+        self.icon_badge = icons.header_widget(Badge("—", "neutral"))
 
-        iface.body.addWidget(SectionLabel("设备图标（本机上传）"))
         self.icon_box = QVBoxLayout()
-        self.icon_box.setSpacing(2)
-        iface.body.addLayout(self.icon_box)
+        self.icon_box.setContentsMargins(0, 0, 0, 0)
+        self.icon_box.setSpacing(4)
+        icons.body.addLayout(self.icon_box)
 
         self.icon_hint = QLabel("")
         self.icon_hint.setWordWrap(True)
         self.icon_hint.setFont(theme.ui_font(7))
-        self.icon_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 2px 2px 4px 2px;")
-        iface.body.addWidget(self.icon_hint)
+        self.icon_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 2px 2px 0 2px;")
+        icons.body.addWidget(self.icon_hint)
 
-        iface.body.addWidget(self._divider())
+        # ---------------- 模块四：接口调试 ---------------- #
+        dbg = SectionCard("接口调试", "terminal", "手动读一次私有集合，结果可复制给 AI 分析",
+                          tone="amber")
         self.probe_panel = ProbePanel(lambda: self.config)
-        iface.body.addWidget(self.probe_panel)
+        dbg.header_widget(self.probe_panel.status)
+        dbg.body.addWidget(self.probe_panel)
 
-        iface.body.addWidget(self._divider())
+        # ---------------- 页脚：数据与工具（低强调，不抢模块层级） ---------------- #
+        foot = QWidget()
+        foot.setStyleSheet("background: transparent;")
+        flay = QVBoxLayout(foot)
+        flay.setContentsMargins(0, 0, 0, 0)
+        flay.setSpacing(8)
+        flay.addWidget(self._divider())
+
         tools = QHBoxLayout()
-        tools.setContentsMargins(0, 4, 0, 4)
-        tools.setSpacing(6)
+        tools.setContentsMargins(0, 0, 0, 0)
+        tools.setSpacing(8)
         self.btn_example = FlatButton("导出示例接入包")
         self.btn_example.clicked.connect(lambda *_: self._export_example())
-        self.btn_folder = FlatButton("打开数据目录", glyph=theme.ICON["device"])
+        self.btn_folder = FlatButton("打开数据目录", glyph=theme.ICON["folder"])
         self.btn_folder.clicked.connect(lambda *_: self._open_folder())
         tools.addWidget(self.btn_example)
         tools.addWidget(self.btn_folder)
         tools.addStretch(1)
-        iface.body.addLayout(tools)
+        flay.addLayout(tools)
 
         self.data_hint = QLabel(self._data_hint_text())
         self.data_hint.setWordWrap(True)
         self.data_hint.setFont(theme.ui_font(7))
         self.data_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.data_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px 2px 2px;")
-        iface.body.addWidget(self.data_hint)
+        self.data_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 0 2px;")
+        flay.addWidget(self.data_hint)
 
-        self.body.addWidget(iface)
+        for card in (iface, acc, icons, dbg):
+            self.body.addWidget(card)
+        self.body.addWidget(foot)
         self.body.addStretch(1)
         self.reload(config)
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _steps_panel(steps, color: QColor) -> QWidget:
+        """三步行内联引导：浅色底 + 圆形序号，把「怎么接入一台新设备」讲成流程。"""
+        panel = Surface(radius=8, fill=theme.tint(color, 12), border=theme.tint(color, 38))
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(7)
+        num_qss = (f"color: {color.name()};"
+                   f"background: {theme.tint(color, 40).name(QColor.NameFormat.HexArgb)};"
+                   "border-radius: 9px;")
+        for index, (title, detail) in enumerate(steps, 1):
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(9)
+            num = QLabel(str(index))
+            num.setFixedSize(18, 18)
+            num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            num.setFont(theme.ui_font(7, QFont.Weight.DemiBold))
+            num.setStyleSheet(num_qss)
+            row.addWidget(num, 0, Qt.AlignmentFlag.AlignTop)
+            txt = QLabel(f"<b>{title}</b>&nbsp;&nbsp;{detail}")
+            txt.setFont(theme.ui_font(7))
+            txt.setWordWrap(True)
+            txt.setStyleSheet(f"color: {theme.C.TEXT_SECONDARY.name()};")
+            row.addWidget(txt, 1)
+            lay.addLayout(row)
+        return panel
 
     # ------------------------------------------------------------------ #
     def _reload(self):
@@ -464,13 +600,23 @@ class InterfaceSettingsPage(SettingsPageBase):
 
         self._reload_icons()
         self._show_plugin_errors()
+        self._update_badges()
+
+    def _update_badges(self):
+        """数量和状态都放到胶囊里，让每个模块自己说明「现在是什么情况」。"""
+        profs = self.config.get("profiles", [])
+        on = sum(1 for p in profs if p.get("enabled", True))
+        self.iface_badge.setText(f"{on}/{len(profs)} 已启用", "accent" if on else "neutral")
+        self.profile_empty.setVisible(not profs)
+        self.profile_divider.setVisible(bool(profs))
+        self.summary.setText(f"{len(all_protocols())} 个协议插件 · {len(profs)} 套接口")
 
     def _show_plugin_errors(self):
         """用户插件目录里加载失败的插件，直接在设置页提示出来。"""
         errors = plugin_store.errors()
         if not errors:
             if self.import_hint.text().startswith("以下插件加载失败"):
-                self.import_hint.hide()
+                self.import_banner.clear()
             return
         self._set_import_hint("以下插件加载失败（可修正后重启）：" + "；".join(errors[:3]),
                               error=True)
@@ -496,12 +642,13 @@ class InterfaceSettingsPage(SettingsPageBase):
             empty = QLabel("暂无可设置图标的设备：先让主面板检测到设备再回到这里")
             empty.setWordWrap(True)
             empty.setFont(theme.ui_font(7))
-            empty.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 2px;")
+            empty.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; padding: 8px 2px;")
             self.icon_box.addWidget(empty)
 
+        count = icon_store.count()
+        self.icon_badge.setText(f"{count} 张已上传", "accent" if count else "neutral")
         self.icon_hint.setText(
-            f"图标由你自己上传（PNG/JPG，自动裁到 128px），存在本机 assets/icons/，"
-            f"当前 {icon_store.count()} 张；未上传的设备不显示图标。")
+            f"支持 PNG/JPG，自动裁到 128px，存在本机 assets/icons/；未上传的设备不显示图标。")
 
     # ------------------------------------------------------------------ #
     def _upload_icon(self, key: str):
@@ -569,10 +716,7 @@ class InterfaceSettingsPage(SettingsPageBase):
 
     # ------------------------------------------------------------------ #
     def _set_import_hint(self, text: str, error: bool = False):
-        self.import_hint.setText(text)
-        color = theme.C.DANGER.name() if error else theme.C.OK.name()
-        self.import_hint.setStyleSheet(f"color: {color}; padding: 0 2px 4px 2px;")
-        self.import_hint.show()
+        self.import_banner.set_message(text, "danger" if error else "ok")
 
     def _pick_bundle(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -609,9 +753,9 @@ class InterfaceSettingsPage(SettingsPageBase):
         """数据目录固定在 EXE 旁边；只有该目录不可写时才切到用户目录并说明原因。"""
         if USING_EXE_DIR:
             where = "当前 EXE 所在路径" if IS_FROZEN else "程序所在目录（源码运行）"
-            return f"数据目录：{DATA_DIR}（{where}）　·　用户插件：{PLUGIN_DIR}"
-        return (f"数据目录：{DATA_DIR}（{DATA_DIR_NOTE}）　·　"
-                f"程序目录：{EXE_DIR}　·　用户插件：{PLUGIN_DIR}")
+            return f"数据目录：{DATA_DIR}（{where}）\n用户插件：{PLUGIN_DIR}"
+        return (f"数据目录：{DATA_DIR}（{DATA_DIR_NOTE}）\n"
+                f"程序目录：{EXE_DIR}\n用户插件：{PLUGIN_DIR}")
 
     def _open_folder(self):
         os.startfile(DATA_DIR)                     # noqa: S606  (Windows 专用)

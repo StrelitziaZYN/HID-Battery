@@ -2,20 +2,21 @@
 
 只在用户主动点击「开始调试」时执行，不做任何自动探测 / 定时发送。
 用途：适配新设备时确认「哪个集合能读到电量、回包长什么样」。
+
+界面只负责「工具条 + 说明 + 输出区」，标题与状态胶囊由外层设置页的卡片提供。
 """
 from __future__ import annotations
 
 import time
 from typing import Any, Callable, Dict, List
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout,
                                QWidget)
 
 from . import theme
 from .scanner import probe_interfaces
-from .widgets import FlatButton
+from .widgets import Badge, FlatButton
 
 
 class ProbePanel(QWidget):
@@ -28,34 +29,25 @@ class ProbePanel(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(6)
+        root.setSpacing(8)
 
-        head = QHBoxLayout()
-        head.setContentsMargins(0, 0, 0, 0)
-        head.setSpacing(6)
-        title = QLabel("接口调试")
-        title.setFont(theme.ui_font(9, QFont.Weight.DemiBold))
-        title.setStyleSheet(f"color: {theme.C.TEXT.name()};")
-        head.addWidget(title)
+        # 状态胶囊：由外层卡片放进标题右侧，这里只负责更新它的文字
+        self.status = Badge("尚未调试", "neutral")
 
-        self.status = QLabel("尚未调试")
-        self.status.setFont(theme.ui_font(7))
-        self.status.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
-        self.status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        head.addWidget(self.status, 1)
-
+        bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.setSpacing(8)
+        self.btn_run = FlatButton("开始调试", glyph=theme.ICON["terminal"], primary=True)
+        self.btn_run.clicked.connect(lambda *_: self.run())
+        self.btn_copy = FlatButton("复制结果", glyph=theme.ICON["copy"])
+        self.btn_copy.clicked.connect(lambda *_: self._copy())
         self.btn_clear = FlatButton("清空")
         self.btn_clear.clicked.connect(lambda *_: self.clear())
-        head.addWidget(self.btn_clear)
-
-        self.btn_copy = FlatButton("复制结果", glyph=theme.ICON["link"])
-        self.btn_copy.clicked.connect(lambda *_: self._copy())
-        head.addWidget(self.btn_copy)
-
-        self.btn_run = FlatButton("开始调试", glyph=theme.ICON["info"], primary=True)
-        self.btn_run.clicked.connect(lambda *_: self.run())
-        head.addWidget(self.btn_run)
-        root.addLayout(head)
+        bar.addWidget(self.btn_run)
+        bar.addWidget(self.btn_copy)
+        bar.addWidget(self.btn_clear)
+        bar.addStretch(1)
+        root.addLayout(bar)
 
         hint = QLabel("点击「开始调试」才会对已启用接口的厂商私有集合"
                       "（Usage Page ≥ 0xFF00）发一次电量命令；平时不发送任何探测包。")
@@ -66,25 +58,27 @@ class ProbePanel(QWidget):
 
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFixedHeight(148)
-        mono = theme.ui_font(9)
+        self.text.setFixedHeight(142)
+        mono = theme.ui_font(8)
         mono.setFamilies(["Cascadia Mono", "Consolas", "Microsoft YaHei UI"])
         self.text.setFont(mono)
-        self.text.setStyleSheet(theme.INPUT_QSS + "QPlainTextEdit{padding:8px 10px;}")
+        self.text.setStyleSheet(
+            theme.INPUT_QSS + "QPlainTextEdit{padding:9px 11px; border-radius:6px;"
+            "background: rgba(255,255,255,235);}")
         self.text.setPlaceholderText("调试结果会显示在这里（仅在点击「开始调试」后产生）")
         root.addWidget(self.text)
 
     # ------------------------------------------------------------------ #
     def clear(self):
         self.text.clear()
-        self.status.setText("尚未调试")
+        self.status.setText("尚未调试", "neutral")
 
     def run(self):
         """用户主动触发的唯一入口。"""
         config = self._config_provider() or {}
         profiles = [p for p in config.get("profiles", []) if p.get("enabled", True)]
         self._last_run = time.time()
-        self.status.setText("正在调试…")
+        self.status.setText("正在调试…", "accent")
         QGuiApplication.processEvents()
 
         lines: List[str] = []
@@ -112,15 +106,15 @@ class ProbePanel(QWidget):
 
         if not lines:
             self.text.setPlainText("没有可调试的厂商私有集合（Usage Page ≥ 0xFF00）。\n"
-                                   "请确认接收器已插入，或先在下方启用对应厂商接口。")
-            self.status.setText("调试完成：0 个集合")
+                                   "请确认接收器已插入，或在上方启用对应厂商接口。")
+            self.status.setText("调试完成 · 0 个集合", "warn")
             return
 
         self.text.setPlainText("\n".join(lines).rstrip())
-        self.status.setText(f"调试完成 · {len(profiles)} 个接口 · {count} 个私有集合")
+        self.status.setText(f"调试完成 · {len(profiles)} 个接口 · {count} 个私有集合", "ok")
 
     def _copy(self):
         text = self.text.toPlainText()
         if text:
             QGuiApplication.clipboard().setText(text)
-            self.status.setText("已复制到剪贴板")
+            self.status.setText("已复制到剪贴板", "accent")

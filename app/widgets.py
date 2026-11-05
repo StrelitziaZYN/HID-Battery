@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, Property, QPropertyAnimation,
                             QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal)
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QAbstractButton, QHBoxLayout, QLabel,
                                QSizePolicy, QVBoxLayout, QWidget)
 
 from . import theme
@@ -30,6 +30,185 @@ class Surface(QWidget):
         p.fillPath(path, self._fill)
         p.setPen(QPen(self._border, 1))
         p.drawPath(path)
+
+
+class IconTile(QWidget):
+    """模块标识瓦片：圆角浅色底 + 单色图标，用来把相邻卡片区分开。"""
+
+    def __init__(self, glyph: str, color: QColor | None = None, size: int = 30,
+                 radius: int = 9, parent=None):
+        super().__init__(parent)
+        self._glyph = theme.ICON.get(glyph, glyph)
+        self._color = color or theme.C.ACCENT
+        self._radius = radius
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def paintEvent(self, event):                   # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QPen(theme.tint(self._color, 40), 1))
+        p.setBrush(theme.tint(self._color, 20))
+        p.drawRoundedRect(r, self._radius, self._radius)
+        p.setPen(QPen(self._color))
+        p.setFont(theme.icon_font(max(9, int(self.height() * 0.36))))
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._glyph)
+
+
+class Badge(QWidget):
+    """状态胶囊：小圆点 + 短文字，用于「已启用 / 尚未调试 / 导入成功」。"""
+
+    TONES = {"neutral": theme.C.TEXT_SECONDARY, "accent": theme.C.ACCENT,
+             "ok": theme.C.OK, "warn": theme.C.WARN, "danger": theme.C.DANGER}
+
+    def __init__(self, text: str = "", tone: str = "neutral", parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._tone = tone
+        self._color = self.TONES.get(tone, theme.C.TEXT_SECONDARY)
+        self.setFont(theme.ui_font(7))
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setFixedHeight(20)
+
+    # ------------------------------------------------------------------ #
+    def text(self) -> str:
+        return self._text
+
+    def setText(self, text: str, tone: str | None = None):   # noqa: N802
+        self._text = text
+        if tone is not None:
+            self.set_tone(tone)
+        self.updateGeometry()
+        self.update()
+
+    def set_tone(self, tone: str):
+        self._tone = tone
+        self._color = self.TONES.get(tone, theme.C.TEXT_SECONDARY)
+        self.update()
+
+    def sizeHint(self):                            # noqa: N802
+        fm = self.fontMetrics()
+        return QSize(18 + 5 + 6 + fm.horizontalAdvance(self._text) + 9, 20)
+
+    def minimumSizeHint(self):                     # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, event):                   # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        soft = (QColor(0, 0, 0, 14) if self._tone == "neutral"
+                else theme.tint(self._color, 24))
+        p.setPen(QPen(theme.tint(self._color, 46) if self._tone != "neutral"
+                      else QColor(0, 0, 0, 24), 1))
+        p.setBrush(soft)
+        p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(self._color)
+        p.drawEllipse(QRectF(r.left() + 9, r.center().y() - 2.0, 4, 4))
+        p.setPen(QPen(self._color))
+        p.drawText(QRectF(r.left() + 18, r.top(), r.width() - 24, r.height()),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._text)
+
+
+class ListRow(QWidget):
+    """卡片内的一条列表项：白底 + 细边框 + 悬停反馈（比纯分隔线更好辨形）。"""
+
+    def __init__(self, parent=None, radius: int = 8):
+        super().__init__(parent)
+        self._radius = radius
+        self._hover = False
+        self._dimmed = False
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def set_dimmed(self, dimmed: bool):
+        """停用的接口整行压暗，和启用中的行一眼能分开。"""
+        self._dimmed = bool(dimmed)
+        self.update()
+
+    def enterEvent(self, event):                   # noqa: N802
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):                   # noqa: N802
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):                   # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        if self._dimmed:
+            fill, stroke = QColor(0, 0, 0, 4), QColor(0, 0, 0, 14)
+        elif self._hover:
+            fill, stroke = QColor(246, 246, 246, 255), QColor(0, 0, 0, 58)
+        else:
+            fill, stroke = QColor(255, 255, 255, 255), QColor(0, 0, 0, 28)
+        p.setPen(QPen(stroke, 1))
+        p.setBrush(fill)
+        p.drawRoundedRect(r, self._radius, self._radius)
+
+
+class Banner(QWidget):
+    """内联状态条：底色 + 描边 + 图标 + 说明文字（成功 / 失败 / 提示共用）。"""
+
+    def __init__(self, parent=None, tone: str = "info"):
+        super().__init__(parent)
+        self._tone = tone
+        self._color = Badge.TONES.get(tone, theme.C.ACCENT)
+        self._glyph = "\uE946"
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(11, 8, 11, 8)
+        lay.setSpacing(8)
+        self.icon = QLabel()
+        self.icon.setFont(theme.icon_font(8))
+        self.icon.setFixedWidth(14)
+        self.icon.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self.icon)
+
+        self.label = QLabel("")
+        self.label.setFont(theme.ui_font(7))
+        self.label.setWordWrap(True)
+        self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(self.label, 1)
+        self._apply_tone()
+
+    def _apply_tone(self):
+        self._color = Badge.TONES.get(self._tone, theme.C.ACCENT)
+        self._glyph = {"ok": theme.ICON["check"], "danger": theme.ICON["info"]}.get(
+            self._tone, theme.ICON["info"])
+        self.icon.setText(self._glyph)
+        self.icon.setStyleSheet(f"color: {self._color.name()}; background: transparent;")
+        self.label.setStyleSheet(f"color: {self._color.name()}; background: transparent;")
+        self.update()
+
+    # ------------------------------------------------------------------ #
+    def set_message(self, text: str, tone: str = "info"):
+        self._tone = tone
+        self.label.setText(text)
+        self._apply_tone()
+        self.show()
+
+    def text(self) -> str:
+        return self.label.text()
+
+    def clear(self):
+        self.label.clear()
+        self.hide()
+
+    def paintEvent(self, event):                   # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QPen(theme.tint(self._color, 52), 1))
+        p.setBrush(theme.tint(self._color, 16))
+        p.drawRoundedRect(r, 6, 6)
 
 
 class HoverFrame(QWidget):
@@ -227,11 +406,13 @@ class IconButton(_SpinGlyph, QAbstractButton):
     def paintEvent(self, event):                   # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        if self._hover:
+        if self._hover or self.isDown():
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(theme.C.SURFACE_HOVER)
+            p.setBrush(QColor(0, 0, 0, 26) if self.isDown() else theme.C.SURFACE_HOVER)
             p.drawRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 6, 6)
-        color = theme.C.TEXT if self._hover else self._color
+        color = theme.C.TEXT if (self._hover or self.isDown()) else self._color
+        if not self.isEnabled():
+            color = theme.tint(color, 90)
         if hasattr(self, "_spin") and self._angle:
             # 转圈时换成「开口圆环」：圆形箭头本身近似中心对称，只转头很难看出在动；
             # 圆环的开口/收尾角度一转就很明显，是明确的「正在读取」反馈。
@@ -396,6 +577,7 @@ class ToggleSwitch(QAbstractButton):
         self.setChecked(checked)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(40, 22)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._pos = 1.0 if checked else 0.0
         self._anim = QPropertyAnimation(self, b"handle", self)
         self._anim.setDuration(140)
@@ -417,11 +599,21 @@ class ToggleSwitch(QAbstractButton):
 
     handle = Property(float, _get_handle, _set_handle)
 
+    def enterEvent(self, event):                   # noqa: N802
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):                   # noqa: N802
+        self.update()
+        super().leaveEvent(event)
+
     def paintEvent(self, event):                   # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         r = QRectF(self.rect()).adjusted(1, 2, -1, -2)
-        p.setPen(QPen(theme.C.ACCENT if self.isChecked() else QColor(0, 0, 0, 55), 1))
+        stroke = theme.C.ACCENT if self.isChecked() else (
+            QColor(0, 0, 0, 85) if self.underMouse() else QColor(0, 0, 0, 55))
+        p.setPen(QPen(stroke, 1))
         p.setBrush(theme.C.ACCENT if self.isChecked() else QColor(0, 0, 0, 12))
         p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
         d = r.height() - 4
@@ -468,15 +660,27 @@ class FlatButton(_SpinGlyph, QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        down = self.isDown()
+        enabled = self.isEnabled()
         if self._primary:
             bg = QColor(theme.C.TEXT)
-            if self._hover:
-                bg = QColor(52, 52, 52)
+            if down:
+                bg = QColor(0, 0, 0)
+            elif self._hover:
+                bg = QColor(48, 48, 48)
             fg = QColor(255, 255, 255)
             border = QColor(0, 0, 0, 0)
         else:
-            bg = QColor(255, 255, 255, 255 if self._hover else 0)
-            fg = theme.C.TEXT if self._hover else theme.C.TEXT_SECONDARY
+            bg = QColor(0, 0, 0, 0)
+            if down:
+                bg = QColor(0, 0, 0, 18)
+            elif self._hover:
+                bg = QColor(255, 255, 255, 255)
+            fg = theme.C.TEXT if (self._hover or down) else theme.C.TEXT_SECONDARY
+            border = QColor(0, 0, 0, 46) if down else theme.C.STROKE
+        if not enabled:                            # 禁用：整体压淡，不再响应悬停
+            fg = theme.tint(fg, 90)
+            bg = theme.tint(bg, 120) if bg.alpha() else bg
             border = theme.C.STROKE
         p.setPen(QPen(border, 1))
         p.setBrush(bg)

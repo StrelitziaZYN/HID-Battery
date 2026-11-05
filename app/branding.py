@@ -4,7 +4,7 @@ from __future__ import annotations
 APP_NAME = "Strelitzia HID Battery"
 APP_SHORT = "Strelitzia"
 TAGLINE = "2.4G 设备电量监测"
-VERSION = "1.2"
+VERSION = "1.3"
 
 # EXE / 图标 / 注册表项统一用无空格标识
 EXE_STEM = "StrelitziaHIDBattery"
