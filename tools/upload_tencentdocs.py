@@ -12,15 +12,16 @@ sys.path.insert(0, str(SKILL))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import tencentdocs  # noqa: E402
 
-from app.branding import VERSION  # noqa: E402
+from app.branding import APP_NAME, VERSION  # noqa: E402
 
-REL = Path(r"E:\Program Files\Workbuddy Files\个人vibe\HIDBattery\release"
-           rf"\StrelitziaHIDBattery_v{VERSION}_20261101")
+RELEASE_ROOT = Path(__file__).resolve().parent.parent / "release"
+_cands = sorted(p for p in RELEASE_ROOT.glob(f"*_v{VERSION}_*") if p.is_dir())
+REL = _cands[-1] if _cands else RELEASE_ROOT / f"release_v{VERSION}"
 FOLDER = "UTJXdoiglGfE"
 
 ITEMS = [
-    (f"Strelitzia HID Battery v{VERSION} · 使用说明", REL / "docs" / "README.md"),
-    ("Strelitzia HID Battery · 变更记录", REL / "docs" / "CHANGELOG.md"),
+    (f"{APP_NAME} v{VERSION} · 使用说明", REL / "docs" / "README.md"),
+    (f"{APP_NAME} · 变更记录", REL / "docs" / "CHANGELOG.md"),
     (f"v{VERSION} · 产物归档清单", REL / "MANIFEST.md"),
 ]
 
