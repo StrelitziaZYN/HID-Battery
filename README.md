@@ -1,10 +1,12 @@
 # Strelitzia HID Battery
 
+**中文** | [English](README.en.md)
+
 Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手柄的**电量**，最低电量直接显示在托盘图标上。
 
 免安装单文件 EXE，解压即用，无需驱动、无需管理员权限。
 
-当前版本 **v1.3** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
+当前版本 **v1.4** · [下载最新版](https://github.com/StrelitziaZYN/HID-Battery/releases/latest)
 
 ## 功能
 
@@ -14,6 +16,7 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 - **续航估算**：按最近 **30 天**的充放电记录给两个数——「预计还能用」按各段放电速度的中位数算；「满电最长可用」取每次充满后放电循环折算到 0% 的最长一次，附中位值作参照。
 - **多品牌支持**：内置迈丛 MCHOSE、飞智 Flydigi 协议；其它品牌可用「生成提示词 → AI 返回接入包 → 拖进去导入」自助接入，不用等更新。
 - **图标自备**：设备图标由你自己上传（≤128px PNG），程序不联网抓图。
+- **中英双语界面**：设置 → 通用设置 → 「语言 / Language」切换，主窗口、悬浮面板与托盘菜单即时更新。
 
 ## 界面
 
@@ -40,6 +43,13 @@ Windows 托盘小工具：读取 2.4G 接收器（HID）后面无线键鼠、手
 到 [Releases](https://github.com/StrelitziaZYN/HID-Battery/releases/latest) 下载最新的 `win64.zip`，
 解压后双击 `StrelitziaHIDBattery.exe`。首次运行会在 EXE 旁边生成 `config/ protocols/ assets/ data/` 四个目录，
 换电脑只拷 EXE 也能跑；想连配置和历史一起带走就整个文件夹拷过去。
+
+## 界面语言
+
+打开「设置 → 通用设置 → 语言 / Language」，选 **中文** 或 **English**。切换后立即生效：
+主窗口、悬浮面板和托盘右键菜单都会用新语言重建，选择会写入配置，下次启动保持不变。
+
+英文说明见 [README.en.md](README.en.md)。
 
 ## 疑难解答
 

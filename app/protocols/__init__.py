@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..hid_core import (BatteryReading, HidInterface, ProtocolError, close_quietly,
                         open_interface)
+from ..i18n import TF
 from .base import Param, Protocol, parse_fields
 from .registry import (all_protocols, get, ids, load_all, register, resolve_id)
 
@@ -30,7 +31,8 @@ def query_device(interface: HidInterface, profile: Dict[str, Any]) -> BatteryRea
     """按配置里的协议查询一台设备；任何异常都转成 BatteryReading.error。"""
     proto = get(str(profile.get("protocol", "")))
     if proto is None:
-        return BatteryReading(error=f"未知协议 {profile.get('protocol')}（插件未注册）")
+        return BatteryReading(error=TF("未知协议 {}（插件未注册）",
+                                            profile.get("protocol")))
 
     cfg = dict(proto.defaults())
     cfg.update({k: v for k, v in profile.items() if v is not None})
@@ -38,12 +40,12 @@ def query_device(interface: HidInterface, profile: Dict[str, Any]) -> BatteryRea
     try:
         dev = open_interface(interface)
     except Exception as exc:                       # noqa: BLE001
-        return BatteryReading(error=f"打开设备失败：{exc}")
+        return BatteryReading(error=TF("打开设备失败：{}", exc))
     try:
         return proto.query(dev, cfg)
     except ProtocolError as exc:
         return BatteryReading(error=str(exc))
     except Exception as exc:                       # noqa: BLE001
-        return BatteryReading(error=f"通信异常：{exc}")
+        return BatteryReading(error=TF("通信异常：{}", exc))
     finally:
         close_quietly(dev)

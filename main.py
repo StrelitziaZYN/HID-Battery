@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import autostart, branding, history, theme, winapi          # noqa: E402
+from app import autostart, branding, history, i18n, theme, winapi    # noqa: E402
 from app.icons import app_icon, battery_pixmap                    # noqa: E402
 from app.profiles import load_config, save_config                 # noqa: E402
 from app.scanner import scan_devices                              # noqa: E402
@@ -64,6 +64,7 @@ class TrayApp(QObject):
         super().__init__()
         self.app = app
         self.config = load_config()
+        i18n.set_language(self.config.get("language", "zh"))
         self._thread: ScanThread | None = None
         self._stuck: list[ScanThread] = []
         self._token = 0
@@ -72,13 +73,7 @@ class TrayApp(QObject):
         self._reading = False                      # 真值上「正在读」，不依赖定时器状态
         self._console = None
 
-        self.flyout = Flyout(self.config)
-        self.flyout.request_refresh = self.refresh
-        self.flyout.refresh_requested.connect(self.refresh)
-        self.flyout.settings_requested.connect(lambda: self.open_console("settings"))
-        self.flyout.history_requested.connect(lambda: self.open_console("stats"))
-        self.flyout.device_clicked.connect(self.open_prompt)
-        self.flyout.position_changed.connect(self._save_position)
+        self._make_flyout()
 
         self.tray = QSystemTrayIcon(app_icon(not winapi.taskbar_is_dark()), app)
         self.tray.setToolTip(branding.APP_NAME)
@@ -111,8 +106,18 @@ class TrayApp(QObject):
                 pass
             QTimer.singleShot(1400, lambda: self.tray.showMessage(
                 branding.APP_NAME,
-                "已驻留系统托盘，左键点击电池图标即可查看设备电量。",
+                i18n.T("已驻留系统托盘，左键点击电池图标即可查看设备电量。"),
                 QSystemTrayIcon.MessageIcon.Information, 5000))
+
+    def _make_flyout(self):
+        """创建弹出面板并接好信号（首启与语言切换重建共用）。"""
+        self.flyout = Flyout(self.config)
+        self.flyout.request_refresh = self.refresh
+        self.flyout.refresh_requested.connect(self.refresh)
+        self.flyout.settings_requested.connect(lambda: self.open_console("settings"))
+        self.flyout.history_requested.connect(lambda: self.open_console("stats"))
+        self.flyout.device_clicked.connect(self.open_prompt)
+        self.flyout.position_changed.connect(self._save_position)
 
     # ------------------------------------------------------------------ #
     def _build_menu(self):
@@ -121,18 +126,18 @@ class TrayApp(QObject):
         menu.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
-        act_open = QAction("打开面板", menu)
+        act_open = QAction(i18n.T("打开面板"), menu)
         act_open.triggered.connect(lambda *_: self.flyout.popup())
 
-        act_settings = QAction("设置", menu)
+        act_settings = QAction(i18n.T("设置"), menu)
         act_settings.triggered.connect(lambda *_: self.open_console("settings"))
 
-        self.act_autostart = QAction("开机自启动", menu)
+        self.act_autostart = QAction(i18n.T("开机自启动"), menu)
         self.act_autostart.setCheckable(True)
         self.act_autostart.setChecked(autostart.is_enabled())
         self.act_autostart.triggered.connect(self._toggle_autostart)
 
-        act_quit = QAction("退出", menu)
+        act_quit = QAction(i18n.T("退出"), menu)
         act_quit.triggered.connect(self.app.quit)
 
         menu.addAction(act_open)
@@ -175,12 +180,44 @@ class TrayApp(QObject):
             self._console.icons_changed.connect(self.refresh)
             self._console.refresh_requested.connect(self.refresh)
             self._console.opened.connect(self.flyout.hide_animated)
+            self._console.language_changed.connect(self._on_language_changed)
             self._console.set_status(self._status_text())
         return self._console
 
+    def _on_language_changed(self):
+        """语言切换后整窗重建：托盘菜单 / 弹出面板 / 设置窗口全部换新文案。"""
+        try:
+            save_config(self.config)
+        except Exception:                          # noqa: BLE001
+            pass
+        devices = list(self.flyout.devices_page._devices)
+        console_state = None
+        if self._console is not None:
+            console_state = (self._console.isVisible(), self._console._current,
+                             self._console.geometry())
+            self._console.close()
+            self._console.deleteLater()
+            self._console = None
+        self.flyout.hide()
+        self.flyout.deleteLater()
+        self._make_flyout()
+        if devices:
+            self.flyout.devices_page.set_devices(devices)
+        self._build_menu()
+        if console_state is not None:
+            self._ensure_console()
+            visible, page, geo = console_state
+            self._console.open_page(page, refresh=False)
+            self._console.setGeometry(geo)
+            self._console.set_status(self._status_text())
+            if visible:
+                self._console.show()
+        self._set_reading(self._reading)
+
     def _status_text(self) -> str:
         devices = self.flyout.devices_page._devices
-        return f"上次刷新 {len(devices)} 台设备" if devices else "未检测到设备"
+        return (i18n.TF("上次刷新 {} 台设备", len(devices)) if devices
+                else i18n.T("未检测到设备"))
 
     def open_console(self, page: str = "general"):
         self.flyout.hide_animated()
@@ -274,7 +311,7 @@ class TrayApp(QObject):
             # 不再叠加新线程，先给出明确状态，等下一轮再试。
             self._abandon_stuck()
             if len(self._stuck) >= self.MAX_STUCK_THREADS:
-                self._set_reading(False, "设备无响应，稍后自动重试")
+                self._set_reading(False, i18n.T("设备无响应，稍后自动重试"))
                 self._schedule_next()
                 return
 
@@ -340,7 +377,7 @@ class TrayApp(QObject):
         self._reading = False
         self._abandon_stuck()
         self._pending = False
-        self._set_reading(False, "读取超时，稍后自动重试")
+        self._set_reading(False, i18n.T("读取超时，稍后自动重试"))
         self._schedule_next()
 
     def _apply(self, devices: list):
@@ -376,13 +413,14 @@ class TrayApp(QObject):
 
     def _set_tooltip(self, devices: list):
         if not devices:
-            self.tray.setToolTip(f"{branding.APP_NAME} · 未检测到设备")
+            self.tray.setToolTip(i18n.TF("{} · 未检测到设备", branding.APP_NAME))
             return
         lines = [branding.APP_NAME]
         for dev in devices:
             pct = dev.get("percent")
             mark = " ⚡" if dev.get("charging") else ""
-            lines.append(f"{dev.get('name', '设备')}：{pct if pct is not None else '--'}%{mark}")
+            name = dev.get('name') or i18n.T('设备')
+            lines.append(f"{name}：{pct if pct is not None else '--'}%{mark}")
         self.tray.setToolTip("\n".join(lines[:6]))
 
 
@@ -395,7 +433,7 @@ def main() -> int:
     app.setFont(theme.ui_font(9))
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        print("系统托盘不可用")
+        print(i18n.T("系统托盘不可用"))
         return 1
 
     tray = TrayApp(app)

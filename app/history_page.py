@@ -14,7 +14,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QScrollArea,
                                QVBoxLayout, QWidget)
 
-from . import history, theme
+from . import history, i18n, theme
 from .chart import LineChart
 from .profiles import save_config
 from .widgets import DragArea, FlatButton, IconButton, Segmented, Surface
@@ -26,14 +26,14 @@ RECORD_OPTIONS = (("5 分钟", 300), ("10 分钟", 600),
 
 def _duration(hours: float) -> str:
     if hours >= 100:
-        return "100 小时以上"
+        return i18n.T("100 小时以上")
     total = int(round(hours * 60))
     hh, mm = divmod(total, 60)
     if hh <= 0:
-        return f"{max(mm, 1)} 分钟"
+        return i18n.TF("{} 分钟", max(mm, 1))
     if mm == 0:
-        return f"{hh} 小时"
-    return f"{hh} 小时 {mm} 分"
+        return i18n.TF("{} 小时", hh)
+    return i18n.TF("{} 小时 {} 分", hh, mm)
 
 
 def _span(hours: float) -> str:
@@ -41,7 +41,7 @@ def _span(hours: float) -> str:
     total = int(round(hours))
     if total >= 48:
         days, rest = divmod(total, 24)
-        return f"{days} 天 {rest} 小时" if rest else f"{days} 天"
+        return i18n.TF("{} 天 {} 小时", days, rest) if rest else i18n.TF("{} 天", days)
     return _duration(hours)
 
 
@@ -65,7 +65,7 @@ class HistoryPage(QWidget):
         head_lay = QHBoxLayout(head)
         head_lay.setContentsMargins(0, 0, 0, 0)
         head_lay.setSpacing(4)
-        self.btn_back = IconButton(theme.ICON["back"], size=28, icon_size=9, tooltip="返回")
+        self.btn_back = IconButton(theme.ICON["back"], size=28, icon_size=9, tooltip=i18n.T("返回"))
         self.btn_back.clicked.connect(lambda *_: self.back_requested.emit())
         head_lay.addWidget(self.btn_back)
         if embedded:
@@ -73,16 +73,16 @@ class HistoryPage(QWidget):
         title_col = QVBoxLayout()
         title_col.setContentsMargins(0, 0, 0, 0)
         title_col.setSpacing(2)
-        title = QLabel("电量统计")
+        title = QLabel(i18n.T("电量统计"))
         title.setFont(theme.ui_font(13, QFont.Weight.DemiBold))
         title.setStyleSheet(f"color: {theme.C.TEXT.name()}; background: transparent;")
         title_col.addWidget(title)
-        subtitle = QLabel("续航趋势、掉电速率与采样间隔")
+        subtitle = QLabel(i18n.T("续航趋势、掉电速率与采样间隔"))
         subtitle.setFont(theme.ui_font(7))
         subtitle.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()}; background: transparent;")
         title_col.addWidget(subtitle)
         head_lay.addLayout(title_col, 1)
-        self.btn_refresh = IconButton(theme.ICON["refresh"], size=28, icon_size=9, tooltip="刷新图表")
+        self.btn_refresh = IconButton(theme.ICON["refresh"], size=28, icon_size=9, tooltip=i18n.T("刷新图表"))
         self.btn_refresh.clicked.connect(lambda *_: self.refresh())
         head_lay.addWidget(self.btn_refresh)
         root.addWidget(head)
@@ -112,7 +112,7 @@ class HistoryPage(QWidget):
         self.body.addWidget(self.combo)
         self.body.addSpacing(8)
 
-        self.seg = Segmented(RANGE_LABELS)
+        self.seg = Segmented([(key, i18n.T(label)) for key, label in RANGE_LABELS])
         self.seg.setFixedHeight(32)
         self.seg.changed.connect(self._on_range_changed)
         self.body.addWidget(self.seg)
@@ -122,7 +122,7 @@ class HistoryPage(QWidget):
         rec = QHBoxLayout()
         rec.setContentsMargins(2, 0, 2, 0)
         rec.setSpacing(6)
-        rec_label = QLabel("记录间隔")
+        rec_label = QLabel(i18n.T("记录间隔"))
         rec_label.setFont(theme.ui_font(8))
         rec_label.setStyleSheet(f"color: {theme.C.TEXT_SECONDARY.name()};")
         self.record = QComboBox()
@@ -130,9 +130,9 @@ class HistoryPage(QWidget):
         self.record.setFont(theme.ui_font(8))
         self.record.setFixedWidth(96)
         for label, sec in RECORD_OPTIONS:
-            self.record.addItem(label, sec)
+            self.record.addItem(i18n.T(label), sec)
         self.record.currentIndexChanged.connect(self._on_record_interval)
-        rec_hint = QLabel(f"按此间隔采样，保留 {history.RETENTION_DAYS} 天")
+        rec_hint = QLabel(i18n.TF("按此间隔采样，保留 {} 天", history.RETENTION_DAYS))
         rec_hint.setFont(theme.ui_font(7))
         rec_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
         rec.addWidget(rec_label)
@@ -186,8 +186,8 @@ class HistoryPage(QWidget):
         self.body.addWidget(self.card)
         self.body.addSpacing(10)
 
-        self.empty = QLabel("还没有历史记录。\n程序会按下方「记录间隔」自动采样，"
-                            "积累几次后这里会出现曲线和预测。")
+        self.empty = QLabel(i18n.T("还没有历史记录。\n程序会按下方「记录间隔」自动采样，"
+                            "积累几次后这里会出现曲线和预测。"))
         self.empty.setWordWrap(True)
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setFont(theme.ui_font(8))
@@ -200,9 +200,9 @@ class HistoryPage(QWidget):
         foot = QHBoxLayout()
         foot.setContentsMargins(0, 6, 0, 0)
         foot.setSpacing(6)
-        self.btn_clear = FlatButton("清除该设备记录", glyph=theme.ICON["delete"])
+        self.btn_clear = FlatButton(i18n.T("清除该设备记录"), glyph=theme.ICON["delete"])
         self.btn_clear.clicked.connect(self._clear_device)
-        self.btn_clear_all = FlatButton("全部清除")
+        self.btn_clear_all = FlatButton(i18n.T("全部清除"))
         self.btn_clear_all.clicked.connect(self._clear_all)
         foot.addWidget(self.btn_clear)
         foot.addWidget(self.btn_clear_all)
@@ -266,38 +266,40 @@ class HistoryPage(QWidget):
 
         st = history.stats(uid, self._range, now)
         if st["count"]:
-            span_text = dict(RANGE_LABELS)[self._range]
-            self.stats.setText(
-                f"{span_text}：最低 {st['min']}% · 最高 {st['max']}% · "
-                f"平均 {st['avg']}% · {st['count']} 次采样")
+            span_text = i18n.T(dict(RANGE_LABELS)[self._range])
+            self.stats.setText(i18n.TF(
+                "{}：最低 {}% · 最高 {}% · 平均 {}% · {} 次采样",
+                span_text, st['min'], st['max'], st['avg'], st['count']))
         else:
-            self.stats.setText("该区间还没有采样")
+            self.stats.setText(i18n.T("该区间还没有采样"))
         self._update_prediction(uid, now)
 
     def _update_prediction(self, uid: str, now: int) -> None:
         info = history.predict(uid, now)
         if info.get("ready"):
-            self.predict_title.setText(f"预计还能用 {_duration(info['hours'])}")
-            self.predict_sub.setText(
-                f"当前 {info['percent']}% · 近 {history.ENDURANCE_DAYS} 天 "
-                f"{info.get('cycles', 1)} 段放电 · 平均掉电 {info['rate']} %/小时 · "
-                f"数据覆盖 {_span(info['window_h'])}")
+            self.predict_title.setText(i18n.TF("预计还能用 {}", _duration(info['hours'])))
+            self.predict_sub.setText(i18n.TF(
+                "当前 {}% · 近 {} 天 {} 段放电 · 平均掉电 {} · 数据覆盖 {}",
+                info['percent'], history.ENDURANCE_DAYS, info.get('cycles', 1),
+                i18n.TF("{} %/小时", info['rate']), _span(info['window_h'])))
         else:
-            self.predict_title.setText(str(info.get("reason") or "暂无预测"))
+            self.predict_title.setText(str(info.get("reason") or i18n.T("暂无预测")))
             if info.get("percent") is not None:
-                self.predict_sub.setText(
-                    f"当前 {info['percent']}% · 继续积累放电记录后会自动给出估算")
+                self.predict_sub.setText(i18n.TF(
+                    "当前 {}% · 继续积累放电记录后会自动给出估算", info['percent']))
             else:
-                self.predict_sub.setText("需要至少 3 次放电采样，且间隔覆盖半小时以上")
+                self.predict_sub.setText(
+                    i18n.T("需要至少 3 次放电采样，且间隔覆盖半小时以上"))
 
         end = history.endurance(uid, now)
         if end.get("ready"):
-            self.endurance_title.setText(f"满电最长可用 {_span(end['hours'])}")
-            self.endurance_sub.setText(
-                f"近 {end['days']} 天 {end['cycles']} 次充电循环 · 中位 {_span(end['median'])} · "
-                f"最长一次 {end['start']}%→{end['end']}% 实测 {end['measured_h']:g} 小时")
+            self.endurance_title.setText(i18n.TF("满电最长可用 {}", _span(end['hours'])))
+            self.endurance_sub.setText(i18n.TF(
+                "近 {} 天 {} 次充电循环 · 中位 {} · 最长一次 {}%→{}% 实测 {} 小时",
+                end['days'], end['cycles'], _span(end['median']),
+                end['start'], end['end'], f"{end['measured_h']:g}"))
         else:
-            self.endurance_title.setText("满电续航：待积累")
+            self.endurance_title.setText(i18n.T("满电续航：待积累"))
             self.endurance_sub.setText(str(end.get("reason") or ""))
 
     def _show_empty(self, empty: bool) -> None:
@@ -336,7 +338,7 @@ class HistoryPage(QWidget):
             return
         if self._confirm_uid != self._uid:
             self._confirm_uid = self._uid
-            self.btn_clear.setText("再点一次确认清除")
+            self.btn_clear.setText(i18n.T("再点一次确认清除"))
             self._confirm_timer.start()
             return
         history.clear_device(self._uid)
@@ -346,7 +348,7 @@ class HistoryPage(QWidget):
     def _clear_all(self) -> None:
         if self._confirm_uid != "*":
             self._confirm_uid = "*"
-            self.btn_clear_all.setText("再点一次确认")
+            self.btn_clear_all.setText(i18n.T("再点一次确认"))
             self._confirm_timer.start()
             return
         history.clear_all()
@@ -356,8 +358,8 @@ class HistoryPage(QWidget):
 
     def _reset_confirm(self) -> None:
         self._confirm_uid = ""
-        self.btn_clear.setText("清除该设备记录")
-        self.btn_clear_all.setText("全部清除")
+        self.btn_clear.setText(i18n.T("清除该设备记录"))
+        self.btn_clear_all.setText(i18n.T("全部清除"))
         self.btn_clear.setEnabled(bool(self._uid))
         self.btn_clear_all.setEnabled(bool(history.devices()))
 

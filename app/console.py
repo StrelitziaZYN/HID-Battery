@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractButton, QHBoxLayout, QLabel,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from . import branding, theme
+from . import branding, i18n, theme
 from .history_page import HistoryPage
 from .icons import app_icon
 from .settings_page import GeneralSettingsPage, InterfaceSettingsPage
@@ -21,7 +21,7 @@ NAV = [
     ("general", "通用设置", "settings"),
     ("stats", "电量统计", "chart"),
     ("iface", "接口设置", "device"),
-]
+]  # 标签为中文键，渲染时经 i18n.T 翻译
 
 
 class NavItem(QAbstractButton):
@@ -79,6 +79,7 @@ class ConsoleWindow(QWidget):
     config_changed = Signal()
     icons_changed = Signal()
     refresh_requested = Signal()
+    language_changed = Signal()
     opened = Signal()
 
     def __init__(self, config: Dict[str, Any],
@@ -113,7 +114,7 @@ class ConsoleWindow(QWidget):
         title.setStyleSheet(f"color: {theme.C.TEXT.name()};")
         title.setWordWrap(True)
         nav_lay.addWidget(title)
-        sub = QLabel(f"{branding.TAGLINE} · v{branding.VERSION}")
+        sub = QLabel(f"{i18n.T(branding.TAGLINE)} · v{branding.VERSION}")
         sub.setFont(theme.ui_font(7))
         sub.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
         nav_lay.addWidget(sub)
@@ -127,13 +128,14 @@ class ConsoleWindow(QWidget):
 
         self._nav: Dict[str, NavItem] = {}
         for key, label, glyph in NAV:
-            item = NavItem(label, glyph)
+            item = NavItem(i18n.T(label), glyph)
             item.clicked.connect(lambda _checked=False, k=key: self.open_page(k))
             self._nav[key] = item
             nav_lay.addWidget(item)
 
         nav_lay.addStretch(1)
-        self.btn_refresh = FlatButton("立即刷新", glyph=theme.ICON["refresh"], spin=True)
+        self.btn_refresh = FlatButton(i18n.T("立即刷新"),
+                                      glyph=theme.ICON["refresh"], spin=True)
         self.btn_refresh.clicked.connect(lambda *_: self.refresh_requested.emit())
         nav_lay.addWidget(self.btn_refresh)
         root.addWidget(nav)
@@ -160,6 +162,7 @@ class ConsoleWindow(QWidget):
         self.history_page.config_changed.connect(self._on_config_changed)
         self.iface_page.icons_changed.connect(self.icons_changed)
         self.iface_page.prompt_requested.connect(self.open_prompt)
+        self.general_page.language_changed.connect(self.language_changed)
 
         root.addWidget(content, 1)
         self._pages = {"general": self.general_page,

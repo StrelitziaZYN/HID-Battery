@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from . import branding, paths
+from . import branding, i18n, paths
 
 _CODE_TEMPLATE = '''from __future__ import annotations
 
@@ -67,15 +67,16 @@ def conn_text(device: Dict[str, Any]) -> str:
     supported = bool(device.get("supported", True))
     conn = device.get("connection")
     if supported and conn is not None:
-        label = {1: "有线 USB", 2: "2.4G 无线", 3: "蓝牙"}.get(conn, f"未知（{conn}）")
+        label = {1: i18n.T("有线 USB"), 2: i18n.T("2.4G 无线"),
+                 3: i18n.T("蓝牙")}.get(conn, i18n.TF("未知（{}）", conn))
         bits = [label]
         if device.get("percent") is not None:
-            bits.append(f"电量 {device['percent']}%")
-        bits.append("充电中" if device.get("charging") else "放电中")
+            bits.append(i18n.TF("电量 {}%", device['percent']))
+        bits.append(i18n.T("充电中") if device.get("charging") else i18n.T("放电中"))
         return " · ".join(bits)
     if supported:
-        return "已接入协议，但本次未读到电量（可再点一次刷新）"
-    return "未知 —— 尚未接入协议，需由 HID 集合与命令响应推断"
+        return i18n.T("已接入协议，但本次未读到电量（可再点一次刷新）")
+    return i18n.T("未知 —— 尚未接入协议，需由 HID 集合与命令响应推断")
 
 
 def _identity_lines(device: Dict[str, Any]) -> List[str]:

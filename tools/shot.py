@@ -2,6 +2,7 @@
 
     python tools/shot.py              # 默认状态（未上传图标）
     python tools/shot.py --demo-icon  # 额外生成一张「已上传图标」的效果图
+    python tools/shot.py --lang en    # 英文界面（文件名带 _en 后缀）
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from PySide6.QtCore import QRectF, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QPainter  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from app import icon_store, theme  # noqa: E402
+from app import i18n, icon_store, theme  # noqa: E402
 from app.profiles import load_config  # noqa: E402
 from app.prompt_page import PromptDialog  # noqa: E402
 from app.protocols import all_protocols  # noqa: E402
@@ -45,6 +46,14 @@ def _demo_icon(path: str) -> None:
 
 def main() -> int:
     demo = "--demo-icon" in sys.argv
+    lang = "zh"
+    if "--lang" in sys.argv:
+        idx = sys.argv.index("--lang")
+        if idx + 1 < len(sys.argv):
+            lang = sys.argv[idx + 1]
+    i18n.set_language(lang)
+    suffix = "" if lang == "zh" else f"_{lang}"
+
     os.makedirs(OUT, exist_ok=True)
     app = QApplication(sys.argv)
     app.setFont(theme.ui_font(9))
@@ -55,27 +64,27 @@ def main() -> int:
     flyout.devices_page.set_devices(devices)
     flyout.show()
     app.processEvents()
-    flyout.grab().save(os.path.join(OUT, "devices.png"))
+    flyout.grab().save(os.path.join(OUT, f"devices{suffix}.png"))
 
     console = ConsoleWindow(config, lambda: list(devices))
     console.show()
     for key, name in (("stats", "history"), ("general", "general"), ("iface", "settings")):
         console.open_page(key)
         app.processEvents()
-        console.grab().save(os.path.join(OUT, name + ".png"))
+        console.grab().save(os.path.join(OUT, name + suffix + ".png"))
     console.close()
 
     picker = ProtocolPicker(all_protocols(), "mchose-v2")
     picker.show()
     app.processEvents()
-    picker.grab().save(os.path.join(OUT, "protocol_picker.png"))
+    picker.grab().save(os.path.join(OUT, f"protocol_picker{suffix}.png"))
     picker.close()
 
     if devices:
         dlg = PromptDialog(config, devices[0])
         dlg.show()
         app.processEvents()
-        dlg.grab().save(os.path.join(OUT, "prompt_dialog.png"))
+        dlg.grab().save(os.path.join(OUT, f"prompt_dialog{suffix}.png"))
         dlg.close()
 
     if demo and devices:

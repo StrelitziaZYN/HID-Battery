@@ -27,6 +27,7 @@ import json
 import os
 from typing import Any, Dict, List
 
+from .i18n import T, TF
 from .paths import APP_DIR, CONFIG_DIR
 
 PROFILE_PATH = os.path.join(CONFIG_DIR, "profiles.json")
@@ -97,6 +98,7 @@ def default_config() -> Dict[str, Any]:
         "config_version": CONFIG_VERSION,
         "refresh_interval": 60,
         "record_interval": 300,
+        "language": "zh",
         "profiles": [_with_defaults(dict(p)) for p in _SEED],
     }
 
@@ -167,7 +169,7 @@ def new_profile(protocol_id: str, vendor_id: int = 0, index: int = 0) -> Dict[st
     proto = get_protocol(protocol_id)
     base = {
         "id": f"{protocol_id}-{index + 1}",
-        "name": f"{proto.label if proto else protocol_id} · 新接口",
+        "name": TF("{} · 新接口", T(proto.label) if proto else protocol_id),
         "vendor_id": int(vendor_id),
         "enabled": True,
         "usage_pages": list(proto.usage_pages) if proto else [],

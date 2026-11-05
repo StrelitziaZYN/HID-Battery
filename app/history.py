@@ -14,6 +14,7 @@ import time
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
+from .i18n import T
 from .paths import DATA_SUBDIR, HISTORY_DB
 
 # 可选的记录间隔（秒）：5 / 10 / 30 / 60 分钟
@@ -81,7 +82,7 @@ def record(devices: List[Dict[str, Any]], interval: int = 300,
             if pct is None:
                 continue
             uid = str(dev.get("uid") or f"{dev.get('vendor_id')}:{dev.get('product_id')}")
-            name = str(dev.get("name") or dev.get("model") or "设备")[:64]
+            name = str(dev.get("name") or dev.get("model") or T("设备"))[:64]
             row = conn.execute("SELECT last_ts FROM devices WHERE uid=?", (uid,)).fetchone()
             if row and moment - int(row[0]) < interval * 0.9:
                 continue
@@ -116,7 +117,7 @@ def devices() -> List[Dict[str, Any]]:
             "SELECT d.uid, d.name, d.vendor, d.last_ts, d.last_percent, "
             "       (SELECT COUNT(*) FROM samples s WHERE s.uid = d.uid) "
             "FROM devices d ORDER BY d.last_ts DESC").fetchall()
-    return [{"uid": r[0], "name": r[1] or "设备", "vendor": r[2] or "",
+    return [{"uid": r[0], "name": r[1] or T("设备"), "vendor": r[2] or "",
              "last_ts": int(r[3]), "last_percent": r[4], "samples": int(r[5])}
             for r in rows]
 
@@ -208,10 +209,10 @@ def predict(uid: str, now: Optional[int] = None) -> Dict[str, Any]:
             (uid,)).fetchone()
 
     if last is None:
-        return {"ready": False, "reason": "还没有记录"}
+        return {"ready": False, "reason": T("还没有记录")}
     percent, charging, last_ts = int(last[0]), bool(last[1]), int(last[2])
     if charging:
-        return {"ready": False, "reason": "正在充电", "percent": percent}
+        return {"ready": False, "reason": T("正在充电"), "percent": percent}
 
     pairs = [(int(r[0]), int(r[1])) for r in rows if not r[2]]
     segs = _segments(rows)
@@ -230,9 +231,9 @@ def predict(uid: str, now: Optional[int] = None) -> Dict[str, Any]:
 
     if not rates:
         if len(pairs) < 3:
-            return {"ready": False, "reason": "数据不足（至少需要 3 次放电采样）",
+            return {"ready": False, "reason": T("数据不足（至少需要 3 次放电采样）"),
                     "percent": percent}
-        return {"ready": False, "reason": "近 30 天电量基本没变化",
+        return {"ready": False, "reason": T("近 30 天电量基本没变化"),
                 "percent": percent, "rate": 0.0}
 
     rates.sort()
@@ -287,7 +288,7 @@ def endurance(uid: str, now: Optional[int] = None, days: int = ENDURANCE_DAYS
 
     if not cycles:
         return {"ready": False, "days": days,
-                "reason": f"近 {days} 天还没有完整记录：充满后用到 20% 以下会记一次"}
+                "reason": T("近 {} 天还没有完整记录：充满后用到 20% 以下会记一次").format(days)}
 
     best = max(cycles, key=lambda c: c["full_h"])
     fulls = sorted(c["full_h"] for c in cycles)

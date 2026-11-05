@@ -509,6 +509,50 @@ def t_bundle_import():
     return detail + "，回滚干净"
 
 
+def t_i18n():
+    """词典完整性 + 占位符一致性 + 语言切换：英文界面不留中文键。"""
+    import ast
+
+    from app import i18n as i18n_mod
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    files = [os.path.join(root, "main.py")]
+    files += [os.path.join(root, "app", n) for n in os.listdir(os.path.join(root, "app"))
+              if n.endswith(".py")]
+    used = set()
+    for path in files:
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and node.args):
+                continue
+            fn = node.func
+            name = (fn.id if isinstance(fn, ast.Name)
+                    else fn.attr if isinstance(fn, ast.Attribute) else "")
+            if name not in ("T", "TF"):
+                continue
+            arg = node.args[0]
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                used.add(arg.value)
+
+    missing = sorted(k for k in used if k not in i18n_mod._EN)
+    assert not missing, f"词典缺 {len(missing)} 条：{missing[:3]}"
+    bad = [k for k in used if k in i18n_mod._EN and
+           i18n_mod._EN[k].count("{}") != k.count("{}")]
+    assert not bad, f"占位符数量不一致：{bad[:3]}"
+
+    old = i18n_mod.lang()
+    try:
+        i18n_mod.set_language("en")
+        assert i18n_mod.T("打开面板") == "Open Panel", "英文查词失败"
+        assert i18n_mod.TF("{} 台充电中", 2) == "2 charging", "英文模板格式化失败"
+        i18n_mod.set_language("zh")
+        assert i18n_mod.T("打开面板") == "打开面板", "中文态不应改词"
+    finally:
+        i18n_mod.set_language(old)
+    return f"{len(used)} 条 UI 文案，词典 {len(i18n_mod._EN)} 条，中英切换正常"
+
+
 def main() -> int:
     _ensure_app()
     for name, fn in (("协议插件注册", t_registry),
@@ -527,7 +571,8 @@ def main() -> int:
                      ("面板列全部设备与自适应高度", t_flyout_resize),
                      ("读取状态收尾", t_reading_state),
                      ("刷新编排与超时恢复", t_scan_orchestration),
-                     ("接入包导入", t_bundle_import)):
+                     ("接入包导入", t_bundle_import),
+                     ("双语词典完整性", t_i18n)):
         check(name, fn)
 
     width = max(len(msg) for _, msg in RESULTS)

@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QAbstractButton, QHBoxLayout, QLabel,
                                QSizePolicy, QVBoxLayout, QWidget)
 
-from . import theme
+from . import i18n, theme
 
 
 class Surface(QWidget):
@@ -501,7 +501,8 @@ class DeviceRow(QWidget):
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(2)
-        self.name = ElidedLabel(device.get("name") or device.get("product") or "未知设备")
+        self.name = ElidedLabel(device.get("name") or device.get("product")
+                                or i18n.T("未知设备"))
         self.name.setFont(theme.ui_font(10, QFont.Weight.DemiBold))
         self.name.setStyleSheet(f"color: {theme.C.TEXT.name()};")
         self.sub = ElidedLabel(self._subtitle(device))
@@ -538,12 +539,13 @@ class DeviceRow(QWidget):
 
     @staticmethod
     def _subtitle(device: dict) -> str:
-        conn = {1: "有线 USB", 2: "2.4G 无线", 3: "蓝牙"}.get(device.get("connection"), "连接未知")
+        conn = {1: i18n.T("有线 USB"), 2: i18n.T("2.4G 无线"),
+                3: i18n.T("蓝牙")}.get(device.get("connection"), i18n.T("连接未知"))
         parts = [conn]
         if device.get("charging"):
-            parts.append("充电中")
+            parts.append(i18n.T("充电中"))
         if device.get("protocol"):
-            parts.append(f"协议 {device['protocol']}")
+            parts.append(i18n.TF("协议 {}", device['protocol']))
         return " · ".join(parts)
 
     def mouseReleaseEvent(self, event):             # noqa: N802

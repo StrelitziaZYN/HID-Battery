@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QFont, QGuiApplication
 from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
                                QLabel, QScrollArea, QVBoxLayout, QWidget)
 
-from . import branding, theme, winapi
+from . import branding, i18n, theme, winapi
 from .widgets import DeviceRow, DragArea, IconButton, Surface
 
 
@@ -51,10 +51,10 @@ class DevicesPage(QWidget):
         head.addWidget(self.title)
         head.addStretch(1)
 
-        self.btn_history = IconButton(theme.ICON["chart"], size=28, icon_size=9, tooltip="电量统计")
+        self.btn_history = IconButton(theme.ICON["chart"], size=28, icon_size=9, tooltip=i18n.T("电量统计"))
         self.btn_refresh = IconButton(theme.ICON["refresh"], size=28, icon_size=9,
-                                      tooltip="刷新（设备清单 + 电量）", spin=True)
-        self.btn_settings = IconButton(theme.ICON["settings"], size=28, icon_size=9, tooltip="打开设置")
+                                      tooltip=i18n.T("刷新（设备清单 + 电量）"), spin=True)
+        self.btn_settings = IconButton(theme.ICON["settings"], size=28, icon_size=9, tooltip=i18n.T("打开设置"))
         self.btn_history.clicked.connect(lambda *_: self.history_requested.emit())
         self.btn_refresh.clicked.connect(lambda *_: self.refresh_requested.emit())
         self.btn_settings.clicked.connect(lambda *_: self.settings_requested.emit())
@@ -63,7 +63,7 @@ class DevicesPage(QWidget):
         head.addWidget(self.btn_settings)
         head_col.addLayout(head)
 
-        self.subtitle = QLabel("尚未读取")
+        self.subtitle = QLabel(i18n.T("尚未读取"))
         self.subtitle.setFont(theme.ui_font(8))
         self.subtitle.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
         head_col.addWidget(self.subtitle)
@@ -93,11 +93,11 @@ class DevicesPage(QWidget):
         empty_lay = QVBoxLayout(self.empty)
         empty_lay.setContentsMargins(0, 18, 0, 18)
         empty_lay.setSpacing(6)
-        self.empty_title = QLabel("未检测到 2.4G 设备")
+        self.empty_title = QLabel(i18n.T("未检测到 2.4G 设备"))
         self.empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_title.setFont(theme.ui_font(10, QFont.Weight.DemiBold))
         self.empty_title.setStyleSheet(f"color: {theme.C.TEXT_SECONDARY.name()};")
-        self.empty_hint = QLabel("请确认接收器已插入，或在设置里「接入新设备」")
+        self.empty_hint = QLabel(i18n.T("请确认接收器已插入，或在设置里「接入新设备」"))
         self.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_hint.setFont(theme.ui_font(8))
         self.empty_hint.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
@@ -113,7 +113,7 @@ class DevicesPage(QWidget):
         self.status.setStyleSheet(f"color: {theme.C.TEXT_TERTIARY.name()};")
         foot.addWidget(self.status)
         foot.addStretch(1)
-        self.btn_more = IconButton(theme.ICON["more"], size=24, icon_size=8, tooltip="打开设置窗口")
+        self.btn_more = IconButton(theme.ICON["more"], size=24, icon_size=8, tooltip=i18n.T("打开设置窗口"))
         self.btn_more.clicked.connect(lambda *_: self.settings_requested.emit())
         foot.addWidget(self.btn_more)
         root.addLayout(foot)
@@ -181,30 +181,31 @@ class DevicesPage(QWidget):
         stamp = self._last_update.strftime("%H:%M:%S") if self._last_update else "--:--:--"
 
         if self._reading:
-            self.subtitle.setText("正在读取设备…")
-            self.status.setText("正在刷新设备清单与电量")
+            self.subtitle.setText(i18n.T("正在读取设备…"))
+            self.status.setText(i18n.T("正在刷新设备清单与电量"))
             return
 
         if self._notice:                           # 超时 / 无响应：异常状态优先显示
             self.subtitle.setText(self._notice)
-            self.status.setText(f"{len(devices)} 台设备 · 上次更新 {stamp}"
-                                if devices else f"上次读取 {stamp}")
+            self.status.setText(
+                i18n.TF("{} 台设备 · 上次更新 {}", len(devices), stamp)
+                if devices else i18n.TF("上次读取 {}", stamp))
             return
 
         if devices:
-            bits = [f"已完成读取 · {len(devices)} 台设备"]
+            bits = [i18n.TF("已完成读取 · {} 台设备", len(devices))]
             if low is not None:
-                bits.append(f"最低 {low}%")
+                bits.append(i18n.TF("最低 {}%", low))
             self.subtitle.setText(" · ".join(bits))
-            tail = [f"{charging} 台充电中"] if charging else []
-            tail.append(f"更新于 {stamp}")
+            tail = [i18n.TF("{} 台充电中", charging)] if charging else []
+            tail.append(i18n.TF("更新于 {}", stamp))
             self.status.setText(" · ".join(tail))
         elif self._last_update:
-            self.subtitle.setText("已完成读取 · 未检测到设备")
-            self.status.setText(f"上次读取 {stamp}")
+            self.subtitle.setText(i18n.T("已完成读取 · 未检测到设备"))
+            self.status.setText(i18n.TF("上次读取 {}", stamp))
         else:
-            self.subtitle.setText("尚未读取")
-            self.status.setText("等待首次读取")
+            self.subtitle.setText(i18n.T("尚未读取"))
+            self.status.setText(i18n.T("等待首次读取"))
 
     def clear(self, text: str = "正在读取设备…"):
         """兼容旧调用：等价于「开始读取」。"""
